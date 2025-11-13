@@ -18,7 +18,7 @@ jobs:
           curl -X POST \
             -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
             -H "Content-Type: application/json" \
-            https://wltrjmcznemnfdpxixma.supabase.co/functions/v1/check-urgent-tasks
+            https://wltrjmcznemnfdpxixma.supabase.co/functions/v1/dynamic-processor
       
       - name: Log execution
         run: echo "✅ Urgent tasks check completed at $(date)"
