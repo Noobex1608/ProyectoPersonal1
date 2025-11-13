@@ -1,0 +1,71 @@
+# Logs.env
+
+logs# Logs
+
+*.loglogs
+
+npm-debug.log**.log
+
+yarn-debug.log*npm-debug.log*
+
+yarn-error.log*yarn-debug.log*
+
+pnpm-debug.log*yarn-error.log*
+
+lerna-debug.log*pnpm-debug.log*
+
+lerna-debug.log*
+
+# Dependencies
+
+.vscode 
+node_modules
+
+distdist
+
+dist-ssrdist-ssr
+
+*.local
+
+# Editor directories and files
+
+.vscode/*# Editor directories and files
+
+!.vscode/extensions.json.vscode/*
+
+.idea!.vscode/extensions.json
+
+.DS_Store.idea
+
+*.suo.DS_Store
+
+*.ntvs**.suo
+
+*.njsproj*.ntvs*
+
+*.sln*.njsproj
+
+*.sw?*.sln
+
+*.sw?
+
+# Environment variables
+.env
+.env.local
+.env.production
+.env.*.local
+
+# Build outputs
+*.local
+.cache
+.temp
+.tmp
+
+# Testing
+coverage
+
+# OS files
+Thumbs.db
+
+# Supabase
+.supabase/
