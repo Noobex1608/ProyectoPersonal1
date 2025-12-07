@@ -554,8 +554,8 @@ function formatTime(date: Date): string {
 <style scoped>
 .chatbot-container {
   position: fixed;
-  bottom: 2rem;
-  right: 2rem;
+  bottom: 20px;
+  right: 20px;
   z-index: 999;
 }
 

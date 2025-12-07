@@ -17,6 +17,7 @@ export interface Database {
           avatar_url: string | null
           notification_enabled: boolean
           notification_time: string
+          moodle_ical_url: string | null
           created_at: string
           updated_at: string
         }
@@ -27,6 +28,7 @@ export interface Database {
           avatar_url?: string | null
           notification_enabled?: boolean
           notification_time?: string
+          moodle_ical_url?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -37,6 +39,7 @@ export interface Database {
           avatar_url?: string | null
           notification_enabled?: boolean
           notification_time?: string
+          moodle_ical_url?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -79,6 +82,7 @@ export interface Database {
           due_date: string | null
           completed_at: string | null
           reminder_sent: boolean
+          moodle_uid: string | null
           created_at: string
           updated_at: string
         }
@@ -93,6 +97,7 @@ export interface Database {
           due_date?: string | null
           completed_at?: string | null
           reminder_sent?: boolean
+          moodle_uid?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -107,6 +112,7 @@ export interface Database {
           due_date?: string | null
           completed_at?: string | null
           reminder_sent?: boolean
+          moodle_uid?: string | null
           created_at?: string
           updated_at?: string
         }

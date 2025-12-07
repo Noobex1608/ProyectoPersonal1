@@ -17,7 +17,7 @@ lerna-debug.log*pnpm-debug.log*
 lerna-debug.log*
 
 # Dependencies
-
+supabase
 .vscode 
 node_modules
 

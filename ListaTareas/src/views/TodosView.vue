@@ -6,13 +6,24 @@
     <div class="container">
       <!-- Panel de Asistente IA -->
       <AIAssistantPanel />
+      <AITutorPanel />
       
       <div class="todos-header">
         <h1>Mis Tareas</h1>
-        <button @click="openCreateForm" class="btn-primary">
-          <PlusIcon class="btn-icon" />
-          Nueva Tarea
-        </button>
+        <div class="header-actions">
+          <button 
+            v-if="completedCount > 0"
+            @click="showDeleteCompletedModal = true" 
+            class="btn-delete-completed"
+          >
+            <TrashIcon class="btn-icon" />
+            Eliminar completadas ({{ completedCount }})
+          </button>
+          <button @click="openCreateForm" class="btn-primary">
+            <PlusIcon class="btn-icon" />
+            Nueva Tarea
+          </button>
+        </div>
       </div>
 
       <div class="filters">
@@ -88,6 +99,29 @@
         </div>
       </div>
     </Teleport>
+
+    <!-- Modal de confirmación para eliminar completadas -->
+    <Teleport to="body">
+      <div v-if="showDeleteCompletedModal" class="modal-overlay" @click="showDeleteCompletedModal = false">
+        <div class="modal-content" @click.stop>
+          <div class="modal-header">
+            <h3>Eliminar Tareas Completadas</h3>
+          </div>
+          <div class="modal-body">
+            <p>¿Estás seguro de eliminar <strong>{{ completedCount }}</strong> tarea(s) completada(s)?</p>
+            <p class="modal-warning">Esta acción no se puede deshacer.</p>
+          </div>
+          <div class="modal-footer">
+            <button @click="showDeleteCompletedModal = false" class="btn-cancel">
+              Cancelar
+            </button>
+            <button @click="deleteCompletedTodos" class="btn-delete">
+              Eliminar Todas
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -104,9 +138,10 @@ import type { TodoWithRelations, TodoInsert, TodoUpdate } from '../interfaces'
 import { 
   PlusIcon, 
   MagnifyingGlassIcon, 
-  ClipboardDocumentListIcon 
+  ClipboardDocumentListIcon,
+  TrashIcon
 } from '@heroicons/vue/24/outline'
-
+import AITutorPanel from '@/components/AITutorPanel.vue';
 const todosStore = useTodosStore()
 const { success, error } = useToast()
 
@@ -120,6 +155,10 @@ const searchQuery = ref('')
 // Modal de confirmación de eliminación
 const showDeleteModal = ref(false)
 const todoToDelete = ref<string | null>(null)
+
+// Modal para eliminar completadas
+const showDeleteCompletedModal = ref(false)
+const completedCount = computed(() => todosStore.completedTodos.length)
 
 const filters = computed(() => [
   { label: 'Todas', value: 'all', count: todosStore.todos.length },
@@ -208,6 +247,30 @@ async function confirmDelete() {
   closeDeleteModal()
 }
 
+async function deleteCompletedTodos() {
+  const completedTodos = todosStore.completedTodos
+  let deletedCount = 0
+  let errorCount = 0
+  
+  for (const todo of completedTodos) {
+    const result = await todosStore.deleteTodo(todo.id)
+    if (result?.success) {
+      deletedCount++
+    } else {
+      errorCount++
+    }
+  }
+  
+  showDeleteCompletedModal.value = false
+  
+  if (deletedCount > 0) {
+    success(`${deletedCount} tarea(s) eliminada(s)`)
+  }
+  if (errorCount > 0) {
+    error(`Error al eliminar ${errorCount} tarea(s)`)
+  }
+}
+
 async function handleSubmit(data: TodoInsert | TodoUpdate) {
   try {
     let result
@@ -258,6 +321,36 @@ function closeForm() {
   margin: 0;
   font-size: 2rem;
   color: #111827;
+}
+
+.header-actions {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.btn-delete-completed {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.25rem;
+  background: #fef2f2;
+  color: #dc2626;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-delete-completed:hover {
+  background: #fee2e2;
+  border-color: #f87171;
+}
+
+.btn-delete-completed .btn-icon {
+  width: 1.1rem;
+  height: 1.1rem;
 }
 
 .btn-primary {
@@ -399,8 +492,15 @@ function closeForm() {
     gap: 1rem;
   }
 
-  .btn-primary {
+  .header-actions {
     width: 100%;
+    flex-direction: column;
+  }
+
+  .btn-primary,
+  .btn-delete-completed {
+    width: 100%;
+    justify-content: center;
   }
 
   .filter-group {

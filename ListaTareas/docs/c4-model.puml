@@ -1,0 +1,312 @@
+@startuml C4_Context
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Context.puml
+
+title Sistema de Gestión de Tareas - Diagrama de Contexto (C4 Nivel 1)
+
+Person(user, "Usuario", "Persona que gestiona sus tareas diarias y productividad")
+
+System(taskSystem, "Lista de Tareas", "Aplicación web para gestión de tareas con asistente de IA integrado")
+
+System_Ext(supabase, "Supabase", "Backend as a Service: Autenticación, Base de datos PostgreSQL y Edge Functions")
+System_Ext(gemini, "Google Gemini AI", "Servicio de IA para asistente virtual, análisis de productividad y sugerencias")
+System_Ext(resend, "Resend", "Servicio de envío de emails para notificaciones")
+System_Ext(vercel, "Vercel", "Plataforma de hosting y despliegue")
+System_Ext(github, "GitHub Actions", "Automatización de cron jobs para notificaciones")
+
+Rel(user, taskSystem, "Gestiona tareas, usa asistente IA", "HTTPS")
+Rel(taskSystem, supabase, "Autenticación, CRUD datos", "HTTPS/REST")
+Rel(taskSystem, gemini, "Consultas de IA", "HTTPS/REST")
+Rel(github, supabase, "Ejecuta Edge Functions", "HTTPS")
+Rel(supabase, resend, "Envía emails", "HTTPS/REST")
+Rel(vercel, taskSystem, "Despliega y sirve", "HTTPS")
+
+SHOW_LEGEND()
+@enduml
+
+@startuml C4_Container
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+title Sistema de Gestión de Tareas - Diagrama de Contenedores (C4 Nivel 2)
+
+Person(user, "Usuario", "Persona que gestiona sus tareas")
+
+System_Boundary(taskSystem, "Lista de Tareas") {
+    Container(spa, "Single Page Application", "Vue 3, TypeScript, Vite", "Interfaz de usuario interactiva con componentes reactivos")
+    Container(router, "Vue Router", "Vue Router 4", "Gestión de navegación y rutas protegidas")
+    Container(stores, "State Management", "Pinia", "Gestión del estado global de la aplicación")
+}
+
+System_Boundary(supabaseBoundary, "Supabase Cloud") {
+    ContainerDb(database, "PostgreSQL Database", "PostgreSQL", "Almacena usuarios, tareas, categorías, tags y notificaciones")
+    Container(auth, "Supabase Auth", "GoTrue", "Autenticación y gestión de sesiones")
+    Container(edgeFunctions, "Edge Functions", "Deno", "Funciones serverless para notificaciones")
+    Container(realtime, "Realtime", "WebSocket", "Sincronización en tiempo real")
+}
+
+System_Ext(gemini, "Google Gemini AI", "API de IA generativa")
+System_Ext(resend, "Resend API", "Servicio de emails")
+System_Ext(github, "GitHub Actions", "Cron jobs automatizados")
+
+Rel(user, spa, "Interactúa", "HTTPS")
+Rel(spa, router, "Navega")
+Rel(spa, stores, "Lee/Escribe estado")
+Rel(stores, auth, "Autenticación", "HTTPS")
+Rel(stores, database, "CRUD operaciones", "HTTPS/REST")
+Rel(spa, gemini, "Consultas IA", "HTTPS")
+Rel(github, edgeFunctions, "Trigger cada hora", "HTTPS")
+Rel(edgeFunctions, database, "Lee tareas urgentes", "SQL")
+Rel(edgeFunctions, resend, "Envía notificaciones", "HTTPS")
+Rel(database, realtime, "Cambios en datos")
+Rel(realtime, spa, "Actualizaciones", "WebSocket")
+
+SHOW_LEGEND()
+@enduml
+
+@startuml C4_Component_Frontend
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+title Sistema de Gestión de Tareas - Componentes Frontend (C4 Nivel 3)
+
+Container_Boundary(spa, "Single Page Application - Vue 3") {
+    
+    Component(app, "App.vue", "Vue Component", "Componente raíz, inicializa autenticación")
+    
+    Container_Boundary(views, "Views") {
+        Component(dashboard, "DashboardView", "Vue Component", "Panel principal con estadísticas y resumen")
+        Component(todos, "TodosView", "Vue Component", "Gestión completa de tareas")
+        Component(categories, "CategoriesView", "Vue Component", "Administración de categorías")
+        Component(profile, "ProfileView", "Vue Component", "Configuración del usuario")
+        Component(login, "LoginView", "Vue Component", "Inicio de sesión")
+        Component(signup, "SignupView", "Vue Component", "Registro de usuarios")
+    }
+    
+    Container_Boundary(components, "Components") {
+        Component(navbar, "NavBar", "Vue Component", "Navegación principal")
+        Component(todoForm, "TodoForm", "Vue Component", "Formulario crear/editar tareas")
+        Component(todoItem, "TodoItem", "Vue Component", "Visualización de tarea individual")
+        Component(aiPanel, "AIAssistantPanel", "Vue Component", "Panel de asistente IA")
+        Component(chatbot, "ChatBot", "Vue Component", "Interfaz de chat con IA")
+        Component(productivity, "ProductivityChart", "Vue Component", "Gráficos de productividad")
+        Component(subtask, "SubtaskGenerator", "Vue Component", "Generador de subtareas con IA")
+        Component(conflict, "ConflictDetector", "Vue Component", "Detector de conflictos de tiempo")
+        Component(summary, "DailySummary", "Vue Component", "Resumen diario")
+        Component(toast, "ToastNotification", "Vue Component", "Notificaciones en UI")
+    }
+    
+    Container_Boundary(stores, "Pinia Stores") {
+        Component(authStore, "auth.ts", "Pinia Store", "Estado de autenticación y perfil")
+        Component(todosStore, "todos.ts", "Pinia Store", "Estado de tareas y subtareas")
+        Component(categoriesStore, "categories.ts", "Pinia Store", "Estado de categorías")
+        Component(tagsStore, "tags.ts", "Pinia Store", "Estado de etiquetas")
+    }
+    
+    Container_Boundary(composables, "Composables") {
+        Component(useModal, "useModal", "Composable", "Lógica de modales")
+        Component(useToast, "useToast", "Composable", "Notificaciones toast")
+        Component(useDate, "useDate", "Composable", "Formateo de fechas")
+        Component(usePriority, "useSmartPriority", "Composable", "Sugerencias de prioridad IA")
+        Component(useSubtasks, "useSmartSubtasks", "Composable", "Generación subtareas IA")
+        Component(useTags, "useSmartTags", "Composable", "Sugerencias de tags IA")
+        Component(useConflict, "useTimeConflictDetector", "Composable", "Detección conflictos")
+        Component(useSummary, "useDailySummary", "Composable", "Resumen diario IA")
+        Component(useProductivity, "useProductivityAnalysis", "Composable", "Análisis productividad")
+        Component(useExpander, "useTaskExpander", "Composable", "Expansión de tareas vagas")
+    }
+    
+    Container_Boundary(services, "Services") {
+        Component(geminiService, "gemini.ts", "Service", "Cliente API Google Gemini")
+    }
+    
+    Container_Boundary(lib, "Lib") {
+        Component(supabaseClient, "supabase.ts", "Client", "Cliente Supabase configurado")
+    }
+}
+
+Rel(app, authStore, "Inicializa")
+Rel(dashboard, todosStore, "Lee tareas")
+Rel(dashboard, productivity, "Muestra gráficos")
+Rel(todos, todoForm, "Crea/Edita")
+Rel(todos, todoItem, "Lista")
+Rel(todoForm, usePriority, "Sugiere prioridad")
+Rel(todoForm, useSubtasks, "Genera subtareas")
+Rel(aiPanel, chatbot, "Contiene")
+Rel(chatbot, geminiService, "Consulta IA")
+Rel(composables, geminiService, "Usan IA")
+Rel(stores, supabaseClient, "CRUD datos")
+Rel(authStore, supabaseClient, "Autenticación")
+
+SHOW_LEGEND()
+@enduml
+
+@startuml C4_Component_Backend
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+title Sistema de Gestión de Tareas - Componentes Backend/Supabase (C4 Nivel 3)
+
+Container_Boundary(supabase, "Supabase") {
+    
+    Container_Boundary(database, "PostgreSQL Database") {
+        Component(profiles, "profiles", "Table", "id, email, full_name, avatar_url, notification_enabled, notification_time")
+        Component(todos, "todos", "Table", "id, user_id, category_id, title, description, priority, status, due_date, reminder_sent")
+        Component(categories, "categories", "Table", "id, user_id, name, color, icon")
+        Component(subtasks, "subtasks", "Table", "id, todo_id, title, completed, position")
+        Component(tags, "tags", "Table", "id, user_id, name")
+        Component(todoTags, "todo_tags", "Junction Table", "todo_id, tag_id")
+        Component(notifications, "notifications", "Table", "id, user_id, todo_id, type, scheduled_for, sent, sent_at")
+        Component(aiConversations, "ai_conversations", "Table", "id, user_id, title")
+        Component(aiMessages, "ai_messages", "Table", "id, conversation_id, role, content, metadata")
+        Component(aiActions, "ai_actions", "Table", "id, conversation_id, message_id, action_type, todo_id, action_data")
+    }
+    
+    Container_Boundary(auth, "Authentication") {
+        Component(goTrue, "GoTrue", "Auth Service", "Gestión de usuarios y sesiones JWT")
+        Component(rls, "Row Level Security", "Policies", "Control de acceso a nivel de fila")
+    }
+    
+    Container_Boundary(functions, "Edge Functions") {
+        Component(checkUrgent, "check-urgent-tasks", "Deno Function", "Verifica tareas urgentes próximas a vencer y envía emails")
+    }
+}
+
+System_Ext(resend, "Resend API", "Servicio de emails")
+System_Ext(github, "GitHub Actions", "Cron cada hora")
+
+Rel(profiles, todos, "user_id FK")
+Rel(categories, todos, "category_id FK")
+Rel(todos, subtasks, "todo_id FK")
+Rel(todos, todoTags, "todo_id FK")
+Rel(tags, todoTags, "tag_id FK")
+Rel(profiles, notifications, "user_id FK")
+Rel(todos, notifications, "todo_id FK")
+Rel(profiles, aiConversations, "user_id FK")
+Rel(aiConversations, aiMessages, "conversation_id FK")
+Rel(aiConversations, aiActions, "conversation_id FK")
+
+Rel(goTrue, profiles, "Crea perfil al registrar")
+Rel(rls, todos, "Aplica políticas")
+Rel(rls, categories, "Aplica políticas")
+
+Rel(github, checkUrgent, "Trigger POST cada hora")
+Rel(checkUrgent, todos, "Consulta tareas urgentes")
+Rel(checkUrgent, profiles, "Obtiene emails")
+Rel(checkUrgent, resend, "Envía notificaciones")
+Rel(checkUrgent, notifications, "Registra envío")
+
+SHOW_LEGEND()
+@enduml
+
+@startuml C4_Deployment
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Deployment.puml
+
+title Sistema de Gestión de Tareas - Diagrama de Despliegue (C4)
+
+Deployment_Node(browser, "Navegador Web", "Chrome, Firefox, Safari, Edge") {
+    Container(spa, "Lista de Tareas SPA", "Vue 3, TypeScript", "Aplicación cliente")
+}
+
+Deployment_Node(vercel, "Vercel", "Edge Network Global") {
+    Deployment_Node(vercelEdge, "Edge Nodes") {
+        Container(staticFiles, "Static Files", "HTML, JS, CSS", "Assets de la aplicación")
+    }
+}
+
+Deployment_Node(supabaseCloud, "Supabase Cloud", "AWS") {
+    Deployment_Node(supabaseRegion, "Región: us-east-1") {
+        Container(authService, "Auth Service", "GoTrue", "Autenticación")
+        ContainerDb(postgres, "PostgreSQL", "PostgreSQL 15", "Base de datos principal")
+        Container(edgeFunctions, "Edge Functions", "Deno Deploy", "Funciones serverless")
+        Container(realtime, "Realtime Server", "Elixir", "WebSocket server")
+    }
+}
+
+Deployment_Node(googleCloud, "Google Cloud", "GCP") {
+    Container(geminiApi, "Gemini API", "AI/ML", "Modelo de lenguaje")
+}
+
+Deployment_Node(resendCloud, "Resend", "AWS") {
+    Container(emailService, "Email Service", "SMTP/API", "Envío de emails")
+}
+
+Deployment_Node(githubCloud, "GitHub", "Azure") {
+    Container(actions, "GitHub Actions", "Runners", "Cron jobs automatizados")
+}
+
+Rel(browser, vercelEdge, "HTTPS")
+Rel(spa, authService, "HTTPS/REST")
+Rel(spa, postgres, "HTTPS/REST (PostgREST)")
+Rel(spa, geminiApi, "HTTPS/REST")
+Rel(realtime, spa, "WebSocket")
+Rel(actions, edgeFunctions, "HTTPS POST (cada hora)")
+Rel(edgeFunctions, postgres, "SQL")
+Rel(edgeFunctions, emailService, "HTTPS/REST")
+
+SHOW_LEGEND()
+@enduml
+
+@startuml C4_Sequence_CreateTask
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Sequence.puml
+
+title Secuencia: Crear Tarea con Asistente IA
+
+actor User as user
+participant "Vue SPA" as spa
+participant "ChatBot Component" as chat
+participant "Gemini Service" as gemini
+participant "Todos Store" as store
+participant "Supabase Client" as supabase
+database "PostgreSQL" as db
+
+user -> spa: Abre panel de IA
+spa -> chat: Renderiza ChatBot
+
+user -> chat: "Tengo que hacer la tarea de matemáticas para mañana, es urgente"
+chat -> gemini: askGemini(message, context)
+
+gemini -> gemini: Procesa con SYSTEM_PROMPT
+gemini --> chat: JSON { action: "create_task", task: {...} }
+
+chat -> chat: parseGeminiResponse(response)
+chat -> store: createTodo(taskData)
+
+store -> supabase: insert('todos', data)
+supabase -> db: INSERT INTO todos...
+db --> supabase: { id, title, priority, due_date, ... }
+supabase --> store: Todo creado
+
+store --> chat: { success: true, data: todo }
+chat --> user: "✅ He creado la tarea 'Hacer tarea de matemáticas' con prioridad urgente para mañana"
+
+@enduml
+
+@startuml C4_Sequence_Notification
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Sequence.puml
+
+title Secuencia: Envío de Notificación por Email
+
+participant "GitHub Actions" as github
+participant "Edge Function" as edge
+database "PostgreSQL" as db
+participant "Resend API" as resend
+actor "Usuario Email" as email
+
+github -> github: Cron trigger (cada hora)
+github -> edge: POST /functions/v1/check-urgent-tasks
+
+edge -> db: SELECT todos WHERE priority='urgent'\nAND due_date < NOW() + 24h\nAND reminder_sent = false
+
+db --> edge: [Lista de tareas urgentes con profiles]
+
+loop Para cada tarea urgente
+    edge -> edge: Generar HTML del email
+    edge -> resend: POST /emails { to, subject, html }
+    resend --> edge: { id: email_id }
+    
+    edge -> db: UPDATE todos SET reminder_sent = true
+    edge -> db: INSERT INTO notifications (sent: true)
+end
+
+edge --> github: { success: true, notifications_sent: N }
+
+resend -> email: 📧 Email de notificación
+
+@enduml
