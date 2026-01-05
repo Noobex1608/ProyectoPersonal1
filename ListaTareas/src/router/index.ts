@@ -40,6 +40,12 @@ const router = createRouter({
       name: 'profile',
       component: () => import('../views/ProfileView.vue'),
       meta: { requiresAuth: true }
+    },
+    {
+      path: '/concept-explanation',
+      name: 'concept-explanation',
+      component: () => import('../views/ConceptExplanationView.vue'),
+      meta: { requiresAuth: true }
     }
   ],
   scrollBehavior(_to, _from, savedPosition) {

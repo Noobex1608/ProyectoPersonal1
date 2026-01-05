@@ -1,11 +1,12 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { supabase } from '../lib/supabase'
 import { useAuthStore } from './auth'
+import { TodoRepository } from '@/repositories'
 import type { TodoInsert, TodoUpdate, TodoWithRelations } from '../interfaces'
 
 export const useTodosStore = defineStore('todos', () => {
   const authStore = useAuthStore()
+  const repository = new TodoRepository()
   
   const todos = ref<TodoWithRelations[]>([])
   const loading = ref(false)
@@ -60,25 +61,7 @@ export const useTodosStore = defineStore('todos', () => {
     error.value = null
 
     try {
-      const { data, error: fetchError } = await supabase
-        .from('todos')
-        .select(`
-          *,
-          category:categories(*),
-          subtasks(*),
-          tags:todo_tags(tag:tags(*))
-        `)
-        .eq('user_id', authStore.user.id)
-        .order('created_at', { ascending: false })
-
-      if (fetchError) throw fetchError
-      
-      // Transform the data to flatten tags
-      todos.value = data?.map(todo => ({
-        ...todo,
-        tags: todo.tags?.map((t: any) => t.tag).filter(Boolean) || []
-      })) || []
-      
+      todos.value = await repository.findAllWithRelations(authStore.user.id)
       return { success: true, data: todos.value }
     } catch (err: any) {
       error.value = err.message
@@ -98,65 +81,16 @@ export const useTodosStore = defineStore('todos', () => {
     loading.value = true
     error.value = null
 
-    // Verificar sesión antes de operación crítica (patrón encuestas)
-    const sessionValid = await checkSession()
-    if (!sessionValid) {
-      loading.value = false
-      error.value = 'Sesión expirada. Por favor, inicia sesión nuevamente.'
-      return { success: false, error: error.value }
-    }
-
     try {
       // Separar las tags de los datos del todo
       const { tags: todoTags, ...todoInsertData } = todoData
+      const tagIds = todoTags?.map(t => t.id) || []
       
-      // Crear el todo
-      const { data, error: createError } = await supabase
-        .from('todos')
-        .insert({
-          ...todoInsertData,
-          user_id: authStore.user.id
-        })
-        .select()
-        .single()
-
-      if (createError) throw createError
-
-      // Si hay tags, crear las relaciones
-      if (data && todoTags && todoTags.length > 0) {
-        const todoTagsInserts = todoTags.map(tag => ({
-          todo_id: data.id,
-          tag_id: tag.id
-        }))
-
-        const { error: tagsError } = await supabase
-          .from('todo_tags')
-          .insert(todoTagsInserts)
-
-        if (tagsError) console.error('Error adding tags:', tagsError)
-      }
-
-      // Obtener el todo completo con relaciones
-      const { data: fullTodo, error: fetchError } = await supabase
-        .from('todos')
-        .select(`
-          *,
-          category:categories(*),
-          subtasks(*),
-          tags:todo_tags(tag:tags(*))
-        `)
-        .eq('id', data.id)
-        .single()
-
-      if (fetchError) throw fetchError
-
-      if (fullTodo) {
-        const transformedTodo = {
-          ...fullTodo,
-          tags: fullTodo.tags?.map((t: any) => t.tag).filter(Boolean) || []
-        }
-        todos.value.unshift(transformedTodo)
-      }
+      // Crear el todo usando el repository
+      const fullTodo = await repository.createWithTags(todoInsertData, authStore.user.id, tagIds)
+      
+      // Agregar al estado local
+      todos.value.unshift(fullTodo)
 
       return { success: true, data: fullTodo }
     } catch (err: any) {
@@ -168,91 +102,22 @@ export const useTodosStore = defineStore('todos', () => {
     }
   }
 
-  // Helper para verificar sesión válida (patrón encuestas)
-  const checkSession = async () => {
-    try {
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
-      if (sessionError || !session) {
-        console.warn('⚠️ Sesión inválida o expirada')
-        return false
-      }
-      return true
-    } catch (err) {
-      console.error('❌ Error verificando sesión:', err)
-      return false
-    }
-  }
-
   async function updateTodo(id: string, updates: TodoUpdate & { tags?: any[] }) {
     loading.value = true
     error.value = null
-    
-    // Verificar sesión antes de operación crítica (patrón encuestas)
-    const sessionValid = await checkSession()
-    if (!sessionValid) {
-      loading.value = false
-      error.value = 'Sesión expirada. Por favor, inicia sesión nuevamente.'
-      return { success: false, error: error.value }
-    }
 
     try {
       // Separar las tags de las actualizaciones
       const { tags: todoTags, ...todoUpdateData } = updates
+      const tagIds = todoTags?.map(t => t.id)
       
-      // Actualizar el todo
-      const { error: updateError } = await supabase
-        .from('todos')
-        .update(todoUpdateData)
-        .eq('id', id)
+      // Actualizar usando el repository
+      const fullTodo = await repository.updateWithTags(id, todoUpdateData, tagIds)
       
-      if (updateError) throw updateError
-
-      // Si se proporcionaron tags, actualizar las relaciones
-      if (todoTags !== undefined) {
-        // Eliminar las tags existentes
-        await supabase
-          .from('todo_tags')
-          .delete()
-          .eq('todo_id', id)
-
-        // Insertar las nuevas tags
-        if (todoTags.length > 0) {
-          const todoTagsInserts = todoTags.map(tag => ({
-            todo_id: id,
-            tag_id: tag.id
-          }))
-
-          const { error: tagsError } = await supabase
-            .from('todo_tags')
-            .insert(todoTagsInserts)
-
-          if (tagsError) console.error('Error updating tags:', tagsError)
-        }
-      }
-
-      // Obtener el todo completo con relaciones
-      const { data: fullTodo, error: fetchError } = await supabase
-        .from('todos')
-        .select(`
-          *,
-          category:categories(*),
-          subtasks(*),
-          tags:todo_tags(tag:tags(*))
-        `)
-        .eq('id', id)
-        .single()
-
-      if (fetchError) throw fetchError
-
-      if (fullTodo) {
-        const transformedTodo = {
-          ...fullTodo,
-          tags: fullTodo.tags?.map((t: any) => t.tag).filter(Boolean) || []
-        }
-        const index = todos.value.findIndex(t => t.id === id)
-        if (index !== -1) {
-          todos.value[index] = transformedTodo
-        }
+      // Actualizar el estado local
+      const index = todos.value.findIndex(t => t.id === id)
+      if (index !== -1) {
+        todos.value[index] = fullTodo
       }
 
       return { success: true, data: fullTodo }
@@ -269,22 +134,8 @@ export const useTodosStore = defineStore('todos', () => {
     loading.value = true
     error.value = null
 
-    // Verificar sesión antes de eliminar (patrón encuestas)
-    const sessionValid = await checkSession()
-    if (!sessionValid) {
-      loading.value = false
-      error.value = 'Sesión expirada. Por favor, inicia sesión nuevamente.'
-      return { success: false, error: error.value }
-    }
-
     try {
-      const { error: deleteError } = await supabase
-        .from('todos')
-        .delete()
-        .eq('id', id)
-
-      if (deleteError) throw deleteError
-
+      await repository.delete(id)
       todos.value = todos.value.filter(t => t.id !== id)
       return { success: true }
     } catch (err: any) {
@@ -308,16 +159,7 @@ export const useTodosStore = defineStore('todos', () => {
 
   async function addSubtask(todoId: string, title: string) {
     try {
-      const { data, error: createError } = await supabase
-        .from('subtasks')
-        .insert({
-          todo_id: todoId,
-          title
-        })
-        .select()
-        .single()
-
-      if (createError) throw createError
+      const data = await repository.addSubtask(todoId, title)
 
       // Update local todo
       const todo = todos.value.find(t => t.id === todoId)
@@ -334,12 +176,7 @@ export const useTodosStore = defineStore('todos', () => {
 
   async function toggleSubtask(subtaskId: string, completed: boolean) {
     try {
-      const { error: updateError } = await supabase
-        .from('subtasks')
-        .update({ completed })
-        .eq('id', subtaskId)
-
-      if (updateError) throw updateError
+      await repository.toggleSubtask(subtaskId, completed)
 
       // Update local state
       for (const todo of todos.value) {
@@ -360,12 +197,7 @@ export const useTodosStore = defineStore('todos', () => {
 
   async function deleteSubtask(subtaskId: string) {
     try {
-      const { error: deleteError } = await supabase
-        .from('subtasks')
-        .delete()
-        .eq('id', subtaskId)
-
-      if (deleteError) throw deleteError
+      await repository.deleteSubtask(subtaskId)
 
       // Update local state
       for (const todo of todos.value) {

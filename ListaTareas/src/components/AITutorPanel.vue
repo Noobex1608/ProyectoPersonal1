@@ -69,13 +69,13 @@
         <!-- Botones de acción -->
         <div v-if="selectedTask" class="action-grid">
           <button 
-            @click="requestExplanation" 
+            @click="goToExplanationPage" 
             :disabled="loading"
             class="action-card"
           >
             <LightBulbIcon class="card-icon" />
             <span class="card-title">Explicar concepto</span>
-            <span class="card-desc">Entender mejor el tema</span>
+            <span class="card-desc">Abrir en página completa</span>
           </button>
 
           <button 
@@ -117,18 +117,6 @@
             <span class="card-title">Técnicas</span>
             <span class="card-desc">Pomodoro, active recall...</span>
           </button>
-
-          <button 
-            @click="toggleAudio" 
-            :disabled="loading"
-            class="action-card"
-            :class="{ 'active': audioEnabled }"
-          >
-            <SpeakerWaveIcon v-if="audioEnabled" class="card-icon" />
-            <SpeakerXMarkIcon v-else class="card-icon" />
-            <span class="card-title">{{ audioEnabled ? 'Audio ON' : 'Audio OFF' }}</span>
-            <span class="card-desc">Síntesis de voz</span>
-          </button>
         </div>
 
         <!-- Área de contenido -->
@@ -138,22 +126,8 @@
             <h4>{{ getActionTitle(currentAction) }}</h4>
           </div>
 
-          <!-- Explicación -->
-          <div v-if="currentAction === 'explain'" class="content-body">
-            <p class="explanation-text">{{ currentContent.explanation }}</p>
-            <button 
-              v-if="audioEnabled && currentContent.explanation" 
-              @click="speakText(currentContent.explanation)"
-              :disabled="loading"
-              class="audio-btn"
-            >
-              <SpeakerWaveIcon class="icon-sm" />
-              Escuchar explicación
-            </button>
-          </div>
-
           <!-- Tips de estudio -->
-          <div v-else-if="currentAction === 'tips'" class="content-body">
+          <div v-if="currentAction === 'tips'" class="content-body">
             <ul class="tips-list">
               <li v-for="(tip, index) in currentContent.tips" :key="index" class="tip-item">
                 <CheckCircleIcon class="tip-icon" />
@@ -261,6 +235,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
+import { useRouter } from 'vue-router';
 import { useAITutor } from '@/composables/useAITutor';
 import { useTodosStore } from '@/stores/todos';
 import {
@@ -272,8 +247,6 @@ import {
   GlobeAltIcon,
   RectangleStackIcon,
   ClockIcon,
-  SpeakerWaveIcon,
-  SpeakerXMarkIcon,
   CheckCircleIcon,
   ArrowTopRightOnSquareIcon,
   ArrowPathIcon,
@@ -283,15 +256,13 @@ import {
   AcademicCapIcon as CourseIcon
 } from '@heroicons/vue/24/outline';
 
+const router = useRouter();
 const todosStore = useTodosStore();
 const { 
-  explainConcept, 
   getStudyTips, 
   getResources, 
   generateFlashcards,
   getStudyTechniques,
-  generateAudio,
-  playAudio,
   loading, 
   error 
 } = useAITutor();
@@ -301,7 +272,6 @@ const taskId = ref('');
 const selectedTask = ref<any>(null);
 const currentAction = ref<string>('');
 const currentContent = ref<any>(null);
-const audioEnabled = ref(false);
 const flippedCards = ref<number[]>([]);
 
 const availableTasks = computed(() => {
@@ -339,15 +309,13 @@ function clearContent() {
   flippedCards.value = [];
 }
 
-async function requestExplanation() {
+function goToExplanationPage() {
   if (!taskId.value) return;
   
-  currentAction.value = 'explain';
-  const response = await explainConcept(taskId.value);
-  
-  if (response?.success) {
-    currentContent.value = response.content;
-  }
+  router.push({
+    name: 'concept-explanation',
+    query: { taskId: taskId.value }
+  });
 }
 
 async function requestStudyTips() {
@@ -392,20 +360,6 @@ async function requestStudyTechniques() {
   
   if (response?.success) {
     currentContent.value = response.content;
-  }
-}
-
-function toggleAudio() {
-  audioEnabled.value = !audioEnabled.value;
-}
-
-async function speakText(text: string) {
-  if (!taskId.value) return;
-  
-  const response = await generateAudio(taskId.value, text);
-  
-  if (response?.success && response.content?.audio_url) {
-    playAudio(response.content.audio_url);
   }
 }
 

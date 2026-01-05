@@ -1,11 +1,12 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { supabase } from '../lib/supabase'
 import { useAuthStore } from './auth'
+import { TagRepository } from '@/repositories'
 import type { Tag } from '../interfaces'
 
 export const useTagsStore = defineStore('tags', () => {
   const authStore = useAuthStore()
+  const repository = new TagRepository()
   
   const tags = ref<Tag[]>([])
   const loading = ref(false)
@@ -21,14 +22,7 @@ export const useTagsStore = defineStore('tags', () => {
     error.value = null
 
     try {
-      const { data, error: fetchError } = await supabase
-        .from('tags')
-        .select('*')
-        .eq('user_id', authStore.user.id)
-        .order('name')
-
-      if (fetchError) throw fetchError
-      tags.value = data || []
+      tags.value = await repository.findAll(authStore.user.id)
     } catch (err: any) {
       error.value = err.message
       console.error('Error fetching tags:', err)
@@ -53,22 +47,9 @@ export const useTagsStore = defineStore('tags', () => {
     error.value = null
 
     try {
-      const { data, error: createError } = await supabase
-        .from('tags')
-        .insert({
-          name,
-          user_id: authStore.user.id
-        })
-        .select()
-        .single()
-
-      if (createError) throw createError
-
-      if (data) {
-        tags.value.push(data)
-        tags.value.sort((a, b) => a.name.localeCompare(b.name))
-      }
-
+      const data = await repository.createTag(name, authStore.user.id)
+      tags.value.push(data)
+      tags.value.sort((a, b) => a.name.localeCompare(b.name))
       return { data, error: null }
     } catch (err: any) {
       error.value = err.message
@@ -84,13 +65,7 @@ export const useTagsStore = defineStore('tags', () => {
     error.value = null
 
     try {
-      const { error: deleteError } = await supabase
-        .from('tags')
-        .delete()
-        .eq('id', id)
-
-      if (deleteError) throw deleteError
-
+      await repository.delete(id)
       tags.value = tags.value.filter(t => t.id !== id)
       return { error: null }
     } catch (err: any) {
@@ -104,14 +79,7 @@ export const useTagsStore = defineStore('tags', () => {
 
   async function addTagToTodo(todoId: string, tagId: string) {
     try {
-      const { error: insertError } = await supabase
-        .from('todo_tags')
-        .insert({
-          todo_id: todoId,
-          tag_id: tagId
-        })
-
-      if (insertError) throw insertError
+      await repository.addToTodo(todoId, tagId)
       return { error: null }
     } catch (err: any) {
       return { error: err }
@@ -120,13 +88,7 @@ export const useTagsStore = defineStore('tags', () => {
 
   async function removeTagFromTodo(todoId: string, tagId: string) {
     try {
-      const { error: deleteError } = await supabase
-        .from('todo_tags')
-        .delete()
-        .eq('todo_id', todoId)
-        .eq('tag_id', tagId)
-
-      if (deleteError) throw deleteError
+      await repository.removeFromTodo(todoId, tagId)
       return { error: null }
     } catch (err: any) {
       return { error: err }
