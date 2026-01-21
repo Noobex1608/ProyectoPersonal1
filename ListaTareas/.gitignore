@@ -22,7 +22,7 @@ supabase
 node_modules
 
 distdist
-
+dist
 dist-ssrdist-ssr
 
 *.local
