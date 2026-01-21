@@ -17,6 +17,10 @@
           <CheckCircleIcon class="nav-icon" />
           Tareas
         </router-link>
+        <router-link to="/study-mode" class="nav-link" @click="closeMenu">
+          <AcademicCapIcon class="nav-icon" />
+          Modo Estudio
+        </router-link>
         <router-link to="/categories" class="nav-link" @click="closeMenu">
           <FolderIcon class="nav-icon" />
           Categorías
@@ -51,6 +55,7 @@ import {
   ChartBarIcon,
   CheckCircleIcon,
   FolderIcon,
+  AcademicCapIcon,
   UserCircleIcon,
   ArrowRightOnRectangleIcon,
   Bars3Icon,
@@ -94,18 +99,24 @@ async function handleSignOut() {
 }
 
 .nav-container {
-  max-width: 1200px;
+  max-width: 1400px;
   margin: 0 auto;
-  padding: 1rem 2rem;
+  padding: 0.75rem 2rem;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 2rem;
+}
+
+.nav-brand {
+  flex-shrink: 0;
 }
 
 .nav-brand h1 {
   margin: 0;
-  font-size: 1.5rem;
+  font-size: 1.25rem;
   color: #1f2937;
+  white-space: nowrap;
 }
 
 .nav-brand a {
@@ -117,15 +128,17 @@ async function handleSignOut() {
 }
 
 .logo-icon {
-  width: 2rem;
-  height: 2rem;
+  width: 1.75rem;
+  height: 1.75rem;
   color: var(--color-primary);
 }
 
 .nav-menu {
   display: flex;
-  gap: 2rem;
+  gap: 0.5rem;
   align-items: center;
+  flex: 1;
+  justify-content: center;
 }
 
 .nav-link {
@@ -135,9 +148,11 @@ async function handleSignOut() {
   text-decoration: none;
   color: #6b7280;
   font-weight: 500;
-  transition: color 0.2s;
-  padding: 0.5rem 1rem;
-  border-radius: 6px;
+  font-size: 0.9rem;
+  transition: all 0.2s;
+  padding: 0.625rem 0.875rem;
+  border-radius: 0.5rem;
+  white-space: nowrap;
 }
 
 .nav-link:hover {
@@ -165,14 +180,17 @@ async function handleSignOut() {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.75rem 1.5rem;
+  padding: 0.625rem 1rem;
   background: #ef4444;
   color: white;
   border: none;
-  border-radius: 6px;
+  border-radius: 0.5rem;
   font-weight: 500;
+  font-size: 0.9rem;
   cursor: pointer;
   transition: background 0.2s;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .btn-signout:hover {
@@ -196,6 +214,26 @@ async function handleSignOut() {
   width: 1.75rem;
   height: 1.75rem;
   color: var(--color-gray-900);
+}
+
+@media (max-width: 1024px) {
+  .nav-menu {
+    gap: 0.25rem;
+  }
+
+  .nav-link {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.85rem;
+  }
+
+  .nav-brand h1 {
+    font-size: 1.1rem;
+  }
+
+  .btn-signout {
+    padding: 0.5rem 0.875rem;
+    font-size: 0.85rem;
+  }
 }
 
 @media (max-width: 768px) {

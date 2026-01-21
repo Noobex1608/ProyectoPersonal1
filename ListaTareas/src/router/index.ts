@@ -46,6 +46,12 @@ const router = createRouter({
       name: 'concept-explanation',
       component: () => import('../views/ConceptExplanationView.vue'),
       meta: { requiresAuth: true }
+    },
+    {
+      path: '/study-mode',
+      name: 'study-mode',
+      component: () => import('../views/StudyModeView.vue'),
+      meta: { requiresAuth: true }
     }
   ],
   scrollBehavior(_to, _from, savedPosition) {

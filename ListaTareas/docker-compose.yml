@@ -1,0 +1,31 @@
+# Docker Compose para Ollama
+# Modelo de IA local para el Modo Estudio
+
+version: '3.8'
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: lista-tareas-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+      - OLLAMA_NUM_PARALLEL=2          # Procesar 2 requests simultáneos
+      - OLLAMA_MAX_LOADED_MODELS=1     # Solo 1 modelo en memoria = más RAM disponible
+      - OLLAMA_KEEP_ALIVE=15m          # Mantener modelo cargado 15 minutos
+    restart: unless-stopped
+    # Si tienes GPU NVIDIA, descomentar estas líneas:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+volumes:
+  ollama_data:
+    driver: local

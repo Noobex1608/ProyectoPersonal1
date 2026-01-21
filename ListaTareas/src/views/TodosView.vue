@@ -6,7 +6,6 @@
     <div class="container">
       <!-- Panel de Asistente IA -->
       <AIAssistantPanel />
-      <AITutorPanel />
       
       <div class="todos-header">
         <h1>Mis Tareas</h1>
@@ -141,7 +140,7 @@ import {
   ClipboardDocumentListIcon,
   TrashIcon
 } from '@heroicons/vue/24/outline'
-import AITutorPanel from '@/components/AITutorPanel.vue';
+
 const todosStore = useTodosStore()
 const { success, error } = useToast()
 

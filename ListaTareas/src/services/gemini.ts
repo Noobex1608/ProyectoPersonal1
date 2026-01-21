@@ -384,3 +384,456 @@ Prioriza usar etiquetas existentes cuando sean apropiadas. Sugiere 2-4 etiquetas
   return []
 }
 
+// ============================================
+// FUNCIONES PARA MODO ESTUDIO
+// ============================================
+
+/**
+ * Estudiar un tema libre con explicación detallada
+ */
+export async function studyTopic(topic: string) {
+  try {
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' })
+
+    const prompt = `Eres un tutor educativo experto. Explica el siguiente tema de manera clara y pedagógica:
+
+TEMA: "${topic}"
+
+Proporciona tu respuesta en formato JSON:
+{
+  "explanation": "explicación detallada y didáctica del tema con ejemplos",
+  "keyPoints": ["punto clave 1", "punto clave 2", "punto clave 3"],
+  "examples": ["ejemplo práctico 1", "ejemplo práctico 2"]
+}
+
+INSTRUCCIONES:
+- La explicación debe ser comprensible para un estudiante
+- Usa analogías y ejemplos del mundo real
+- Estructura la información de manera lógica
+- Incluye 3-5 puntos clave
+- Proporciona 2-3 ejemplos prácticos
+- Si es un tema complejo, divídelo en partes más simples`
+
+    const result = await model.generateContent(prompt)
+    const response = await result.response
+    const text = response.text()
+
+    // Extraer JSON de la respuesta
+    const jsonMatch = text.match(/\{[\s\S]*\}/)
+    if (jsonMatch) {
+      return JSON.parse(jsonMatch[0])
+    }
+    
+    // Si no hay JSON, crear respuesta estructurada
+    return {
+      explanation: text,
+      keyPoints: [],
+      examples: []
+    }
+  } catch (error) {
+    console.error('Error estudiando tema:', error)
+    throw new Error('No se pudo obtener explicación del tema')
+  }
+}
+
+/**
+ * Analizar contenido de un PDF extraído
+ */
+export async function analyzePDFContent(pdfText: string, fileName: string) {
+  try {
+    // Usar gemini-2.0-flash-exp por su mayor ventana de contexto (1M tokens)
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' })
+
+    const prompt = `Analiza el siguiente contenido extraído de un PDF educativo:
+
+ARCHIVO: ${fileName}
+
+CONTENIDO:
+${pdfText.substring(0, 10000)} ${pdfText.length > 10000 ? '...(contenido truncado)' : ''}
+
+Proporciona un análisis completo en formato JSON:
+{
+  "fileName": "${fileName}",
+  "summary": "resumen general del documento (2-3 párrafos)",
+  "mainTopics": ["tema principal 1", "tema principal 2", "tema principal 3"],
+  "keyConcepts": [
+    {
+      "term": "concepto clave",
+      "definition": "definición clara y concisa"
+    }
+  ],
+  "explanation": "explicación detallada y didáctica del contenido completo"
+}
+
+INSTRUCCIONES:
+- El resumen debe capturar la esencia del documento
+- Identifica 3-6 temas principales
+- Extrae 5-8 conceptos clave con sus definiciones
+- La explicación debe ser educativa y fácil de entender
+- Estructura la información de manera lógica`
+
+    const result = await model.generateContent(prompt)
+    const response = await result.response
+    const text = response.text()
+
+    const jsonMatch = text.match(/\{[\s\S]*\}/)
+    if (jsonMatch) {
+      return JSON.parse(jsonMatch[0])
+    }
+    
+    throw new Error('No se pudo analizar el PDF correctamente')
+  } catch (error: any) {
+    console.error('Error analizando PDF:', error)
+    
+    // Manejo específico de errores de cuota
+    if (error?.message?.includes('429') || error?.message?.includes('quota')) {
+      const retryMatch = error.message.match(/(\d+)(?:\.\d+)?s/)
+      const retrySeconds = retryMatch ? Math.ceil(parseFloat(retryMatch[1])) : 60
+      
+      throw new Error(
+        `⚠️ Has excedido tu cuota de la API de Gemini.\n\n` +
+        `🕒 Espera ${retrySeconds} segundos e inténtalo de nuevo.\n\n` +
+        `💡 Consejos:\n` +
+        `• Usa archivos PDF más pequeños (máximo 3MB recomendado)\n` +
+        `• Evita analizar muchos PDFs seguidos\n` +
+        `• Considera actualizar a un plan de pago para mayor cuota`
+      )
+    }
+    
+    // Error genérico
+    throw new Error(
+      'No se pudo analizar el contenido del PDF. ' +
+      'Verifica que el archivo no esté dañado y contenga texto legible.'
+    )
+  }
+}
+
+/**
+ * Generar examen basado en contenido estudiado
+ */
+export async function generateExamFromContent(params: {
+  topic: string
+  content: string
+  difficulty?: 'easy' | 'medium' | 'hard'
+  questionCount?: number
+}) {
+  try {
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' })
+
+    const { topic, content, difficulty = 'medium', questionCount = 10 } = params
+
+    const prompt = `Genera un examen educativo basado en el siguiente contenido:
+
+TEMA: ${topic}
+DIFICULTAD: ${difficulty}
+NÚMERO DE PREGUNTAS: ${questionCount}
+
+CONTENIDO A EVALUAR:
+${content.substring(0, 8000)}
+
+Genera el examen en formato JSON:
+{
+  "questions": [
+    {
+      "id": 1,
+      "type": "multiple-choice" | "true-false" | "short-answer",
+      "question": "pregunta clara y específica",
+      "options": ["opción A", "opción B", "opción C", "opción D"],
+      "correctAnswer": "respuesta correcta",
+      "explanation": "explicación de por qué esta es la respuesta correcta",
+      "difficulty": "easy" | "medium" | "hard",
+      "points": 10
+    }
+  ]
+}
+
+INSTRUCCIONES PARA GENERAR PREGUNTAS:
+1. Distribuye los tipos de preguntas:
+   - 60% multiple-choice (4 opciones cada una)
+   - 30% true-false
+   - 10% short-answer
+
+2. Distribución de dificultad (si es ${difficulty}):
+   - easy: preguntas directas sobre conceptos básicos
+   - medium: aplicación de conceptos y relaciones
+   - hard: análisis, síntesis y pensamiento crítico
+
+3. Puntos por dificultad:
+   - easy: 5-8 puntos
+   - medium: 8-12 puntos
+   - hard: 12-15 puntos
+
+4. IMPORTANTE:
+   - Las preguntas deben cubrir diferentes aspectos del contenido
+   - Las opciones incorrectas deben ser plausibles pero claramente incorrectas
+   - Cada pregunta debe tener una explicación educativa
+   - Evita preguntas ambiguas o con múltiples interpretaciones
+   - Para true-false, la afirmación debe ser clara y definitiva
+
+5. Asegúrate de generar exactamente ${questionCount} preguntas`
+
+    const result = await model.generateContent(prompt)
+    const response = await result.response
+    const text = response.text()
+
+    const jsonMatch = text.match(/\{[\s\S]*\}/)
+    if (jsonMatch) {
+      return JSON.parse(jsonMatch[0])
+    }
+    
+    throw new Error('No se pudo generar el examen correctamente')
+  } catch (error) {
+    console.error('Error generando examen:', error)
+    throw new Error('No se pudo generar el examen')
+  }
+}
+
+// ====================================
+// RAG (Retrieval Augmented Generation)
+// ====================================
+
+/**
+ * Divide un texto largo en chunks más pequeños
+ * @param text Texto completo del PDF
+ * @param chunkSize Tamaño máximo de cada chunk en caracteres (default: 1000)
+ * @param overlap Superposición entre chunks para mantener contexto (default: 200)
+ */
+export function splitTextIntoChunks(
+  text: string, 
+  chunkSize: number = 1000, 
+  overlap: number = 200
+): string[] {
+  const chunks: string[] = []
+  let startIndex = 0
+  
+  while (startIndex < text.length) {
+    const endIndex = Math.min(startIndex + chunkSize, text.length)
+    const chunk = text.substring(startIndex, endIndex)
+    
+    // Intentar cortar en un punto natural (fin de oración)
+    let cutPoint = endIndex
+    if (endIndex < text.length) {
+      const lastPeriod = chunk.lastIndexOf('. ')
+      const lastNewline = chunk.lastIndexOf('\n')
+      cutPoint = Math.max(lastPeriod, lastNewline)
+      
+      if (cutPoint > startIndex + chunkSize / 2) {
+        chunks.push(text.substring(startIndex, startIndex + cutPoint + 1).trim())
+        startIndex += cutPoint + 1
+      } else {
+        chunks.push(chunk.trim())
+        startIndex = endIndex
+      }
+    } else {
+      chunks.push(chunk.trim())
+      break
+    }
+    
+    // Retroceder para crear overlap
+    startIndex = Math.max(startIndex - overlap, startIndex)
+  }
+  
+  return chunks.filter(c => c.length > 50) // Filtrar chunks muy pequeños
+}
+
+/**
+ * Genera embedding de un texto usando Gemini
+ * @param text Texto para generar embedding
+ * @returns Vector numérico (embedding)
+ */
+export async function generateEmbedding(text: string): Promise<number[]> {
+  try {
+    const model = genAI.getGenerativeModel({ model: 'text-embedding-004' })
+    
+    const result = await model.embedContent(text)
+    const embedding = result.embedding
+    
+    return embedding.values
+  } catch (error) {
+    console.error('Error generando embedding:', error)
+    throw new Error('No se pudo generar el embedding del texto')
+  }
+}
+
+/**
+ * Analiza un PDF usando RAG (Retrieval Augmented Generation)
+ * Solo genera un resumen inicial basado en los chunks más relevantes
+ * @param chunks Array de chunks de texto del PDF
+ * @param fileName Nombre del archivo PDF
+ */
+export async function analyzePDFWithRAG(
+  chunks: string[], 
+  fileName: string
+): Promise<any> {
+  try {
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' })
+    
+    // Tomar solo los primeros 3-5 chunks como muestra representativa
+    const sampleChunks = chunks.slice(0, Math.min(5, chunks.length))
+    const sampleText = sampleChunks.join('\n\n')
+    
+    const prompt = `Analiza este documento educativo basándote en la siguiente muestra:
+
+ARCHIVO: ${fileName}
+TOTAL DE SECCIONES: ${chunks.length}
+
+MUESTRA DEL CONTENIDO:
+${sampleText}
+
+Proporciona un análisis preliminar en formato JSON:
+{
+  "fileName": "${fileName}",
+  "summary": "resumen general del documento (2-3 párrafos)",
+  "mainTopics": ["tema principal 1", "tema principal 2", "tema principal 3"],
+  "keyConcepts": [
+    {
+      "term": "concepto clave",
+      "definition": "definición clara y concisa"
+    }
+  ],
+  "totalSections": ${chunks.length}
+}
+
+INSTRUCCIONES:
+- El resumen debe capturar la esencia del documento
+- Identifica 3-6 temas principales
+- Extrae 5-8 conceptos clave con sus definiciones
+- Este es un análisis preliminar; el usuario podrá hacer preguntas específicas después`
+
+    const result = await model.generateContent(prompt)
+    const response = await result.response
+    const text = response.text()
+
+    const jsonMatch = text.match(/\{[\s\S]*\}/)
+    if (jsonMatch) {
+      return JSON.parse(jsonMatch[0])
+    }
+    
+    throw new Error('No se pudo analizar el PDF correctamente')
+  } catch (error: any) {
+    console.error('Error analizando PDF con RAG:', error)
+    
+    // Manejo específico de errores de cuota
+    if (error?.message?.includes('429') || error?.message?.includes('quota')) {
+      const retryMatch = error.message.match(/(\d+)(?:\.\d+)?s/)
+      const retrySeconds = retryMatch ? Math.ceil(parseFloat(retryMatch[1])) : 60
+      
+      throw new Error(
+        `⚠️ Has excedido tu cuota de la API de Gemini.\n\n` +
+        `🕒 Espera ${retrySeconds} segundos e inténtalo de nuevo.\n\n` +
+        `💡 Consejos:\n` +
+        `• Evita analizar muchos PDFs seguidos\n` +
+        `• Considera actualizar a un plan de pago para mayor cuota`
+      )
+    }
+    
+    throw new Error(
+      'No se pudo analizar el contenido del PDF. ' +
+      'Verifica que el archivo no esté dañado y contenga texto legible.'
+    )
+  }
+}
+
+/**
+ * Responde una pregunta específica usando RAG
+ * Busca los chunks relevantes y genera respuesta contextualizada
+ * @param question Pregunta del usuario
+ * @param relevantChunks Chunks relevantes encontrados por búsqueda vectorial
+ */
+export async function answerQuestionWithRAG(
+  question: string,
+  relevantChunks: Array<{ content: string; similarity: number }>
+): Promise<string> {
+  try {
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' })
+    
+    const context = relevantChunks
+      .map((chunk, i) => `[Sección ${i + 1}] ${chunk.content}`)
+      .join('\n\n')
+    
+    const prompt = `Eres un tutor educativo. Responde la siguiente pregunta basándote ÚNICAMENTE en el contexto proporcionado:
+
+PREGUNTA: ${question}
+
+CONTEXTO RELEVANTE:
+${context}
+
+INSTRUCCIONES:
+- Responde de manera clara y educativa
+- Usa solo la información del contexto proporcionado
+- Si el contexto no tiene información suficiente, indícalo claramente
+- Estructura tu respuesta con ejemplos si es posible
+- Mantén un tono pedagógico y amigable`
+
+    const result = await model.generateContent(prompt)
+    const response = await result.response
+    
+    return response.text()
+  } catch (error) {
+    console.error('Error respondiendo pregunta con RAG:', error)
+    throw new Error('No se pudo generar la respuesta')
+  }
+}
+
+/**
+ * Busca recursos educativos adicionales usando Gemini
+ */
+export async function searchEducationalResources(topic: string): Promise<{
+  videos: Array<{ title: string; description: string; url: string }>
+  documents: Array<{ title: string; description: string; type: string }>
+  websites: Array<{ title: string; description: string; url: string }>
+}> {
+  try {
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' })
+    
+    const prompt = `Genera una lista de recursos educativos recomendados para estudiar el tema: "${topic}"
+
+Proporciona la respuesta en formato JSON:
+{
+  "videos": [
+    {
+      "title": "Título del video educativo",
+      "description": "Breve descripción de qué trata",
+      "url": "https://www.youtube.com/watch?v=ejemplo"
+    }
+  ],
+  "documents": [
+    {
+      "title": "Título del documento académico",
+      "description": "Descripción del contenido",
+      "type": "PDF | Article | Book"
+    }
+  ],
+  "websites": [
+    {
+      "title": "Nombre del sitio web educativo",
+      "description": "Qué tipo de información ofrece",
+      "url": "https://ejemplo.com"
+    }
+  ]
+}
+
+IMPORTANTE:
+- Sugiere recursos REALES y de calidad reconocida
+- Para videos, sugiere canales educativos conocidos (Khan Academy, CrashCourse, etc.)
+- Para documentos, sugiere artículos científicos, libros de texto reconocidos
+- Para websites, sugiere sitios educativos de prestigio (.edu, enciclopedias, etc.)
+- Incluye al menos 3 recursos de cada tipo
+- Las URLs deben ser reales y verificables`
+
+    const result = await model.generateContent(prompt)
+    const response = await result.response
+    const text = response.text()
+    
+    // Extraer JSON de la respuesta
+    const jsonMatch = text.match(/\{[\s\S]*\}/)
+    if (jsonMatch) {
+      return JSON.parse(jsonMatch[0])
+    }
+    
+    throw new Error('No se pudo parsear la respuesta de recursos')
+  } catch (error) {
+    console.error('Error buscando recursos educativos:', error)
+    throw new Error('No se pudieron obtener recursos educativos')
+  }
+}

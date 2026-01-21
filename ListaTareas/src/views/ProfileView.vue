@@ -72,6 +72,11 @@
           </div>
         </div>
 
+        <!-- Sección de Integración con Telegram -->
+        <div class="profile-section">
+          <TelegramIntegration />
+        </div>
+
         <!-- Sección de Integración con Moodle -->
         <div class="profile-section moodle-section">
           <h2>🎓 Integración con Moodle</h2>
@@ -167,6 +172,7 @@ import { useAuthStore } from '../stores/auth'
 import { useToast } from '../composables/useToast'
 import { useMoodleSync } from '../composables/useMoodleSync'
 import NavBar from '../components/NavBar.vue'
+import TelegramIntegration from '../components/TelegramIntegration.vue'
 
 const authStore = useAuthStore()
 const { success, error } = useToast()
