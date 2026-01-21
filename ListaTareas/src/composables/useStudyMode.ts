@@ -14,6 +14,7 @@ import {
 import {
   studyTopicWithGroq,
   generateMindMapWithGroq,
+  generateExamWithGroq,
   GroqError
 } from '@/services/groq'
 import { 
@@ -280,7 +281,7 @@ export function useStudyMode() {
   }
 
   /**
-   * Generar examen basado en contenido usando Ollama
+   * Generar examen basado en contenido usando Groq con fallback a Ollama
    */
   async function generateExam(params: {
     topic: string
@@ -293,12 +294,32 @@ export function useStudyMode() {
     errorExam.value = null
 
     try {
-      const exam = await generateExamWithOllama({
-        topic: params.topic,
-        content: params.content,
-        difficulty: params.difficulty || 'medium',
-        questionCount: params.questionCount || 10
-      })
+      let exam
+      let usedService = 'Groq'
+
+      try {
+        // Intento 1: Usar Groq (más rápido)
+        console.log('Intentando generar examen con Groq...')
+        exam = await generateExamWithGroq({
+          topic: params.topic,
+          content: params.content,
+          difficulty: params.difficulty || 'medium',
+          questionCount: params.questionCount || 10
+        })
+        console.log('✓ Examen generado con Groq')
+      } catch (groqError) {
+        console.warn('Groq falló, usando Ollama como respaldo:', groqError)
+        usedService = 'Ollama'
+        
+        // Intento 2: Fallback a Ollama (local)
+        exam = await generateExamWithOllama({
+          topic: params.topic,
+          content: params.content,
+          difficulty: params.difficulty || 'medium',
+          questionCount: params.questionCount || 10
+        })
+        console.log('✓ Examen generado con Ollama (respaldo)')
+      }
 
       currentExam.value = {
         id: `exam_${Date.now()}`,
@@ -310,20 +331,35 @@ export function useStudyMode() {
         createdAt: new Date().toISOString()
       }
 
-      // Guardar examen en base de datos
+      console.log(`Examen creado con ${usedService}: ${exam.questions.length} preguntas, ${currentExam.value.totalPoints} puntos`)
+
+      // Guardar examen en base de datos y obtener el UUID real
       if (authStore.user) {
-        await supabase.from('exams').insert({
-          user_id: authStore.user.id,
-          topic: params.topic,
-          source: params.source,
-          questions: exam.questions,
-          total_points: currentExam.value.totalPoints,
-          created_at: currentExam.value.createdAt
-        })
+        const { data: insertedExam, error: insertError } = await supabase
+          .from('exams')
+          .insert({
+            user_id: authStore.user.id,
+            topic: params.topic,
+            source: params.source,
+            questions: exam.questions,
+            total_points: currentExam.value.totalPoints
+          })
+          .select()
+          .single()
+        
+        if (insertError) {
+          console.error('Error insertando examen:', insertError)
+          throw insertError
+        }
+        
+        // Actualizar el ID del examen con el UUID real de la base de datos
+        if (insertedExam) {
+          currentExam.value.id = insertedExam.id
+        }
       }
     } catch (err) {
       errorExam.value = err instanceof Error ? err.message : 'Error al generar el examen'
-      console.error('Error generando examen:', err)
+      console.error('Error generando examen con ambos servicios:', err)
     } finally {
       loadingExam.value = false
     }
@@ -354,7 +390,21 @@ export function useStudyMode() {
           details.push({
             questionId: question.id,
             userAnswer: '',
-            correctAnswer,
+            correctAnswer: correctAnswer || '',
+            isCorrect: false,
+            points: 0
+          })
+          return
+        }
+        
+        // Validar que exista correctAnswer
+        if (!correctAnswer) {
+          console.warn(`Pregunta ${question.id} no tiene correctAnswer definida`)
+          totalPoints += question.points
+          details.push({
+            questionId: question.id,
+            userAnswer,
+            correctAnswer: '',
             isCorrect: false,
             points: 0
           })
@@ -367,9 +417,10 @@ export function useStudyMode() {
           isCorrect = correctAnswer.length === userAnswer.length &&
                      correctAnswer.every(ans => userAnswer.includes(ans))
         } else {
-          // Respuesta simple
-          isCorrect = userAnswer.toString().toLowerCase() === 
-                     correctAnswer.toString().toLowerCase()
+          // Respuesta simple - normalizar ambas respuestas
+          const normalizedUser = String(userAnswer).trim().toLowerCase()
+          const normalizedCorrect = String(correctAnswer).trim().toLowerCase()
+          isCorrect = normalizedUser === normalizedCorrect
         }
 
         if (isCorrect) {
@@ -403,16 +454,20 @@ export function useStudyMode() {
 
       // Guardar resultado en base de datos
       if (authStore.user) {
-        await supabase.from('exam_results').insert({
+        const { error: resultError } = await supabase.from('exam_results').insert({
           user_id: authStore.user.id,
           exam_id: examId,
           score: result.score,
           percentage: result.percentage,
           correct_answers: result.correctAnswers,
           incorrect_answers: result.incorrectAnswers,
-          details: result.details,
-          completed_at: result.completedAt
+          details: result.details
         })
+        
+        if (resultError) {
+          console.error('Error guardando resultado del examen:', resultError)
+          throw resultError
+        }
 
         // Agregar al historial
         examHistory.value.push({
@@ -440,7 +495,14 @@ export function useStudyMode() {
     try {
       const { data, error } = await supabase
         .from('exam_results')
-        .select('*')
+        .select(`
+          *,
+          exams (
+            id,
+            topic,
+            questions
+          )
+        `)
         .eq('user_id', authStore.user.id)
         .order('completed_at', { ascending: false })
         .limit(20)
@@ -449,13 +511,72 @@ export function useStudyMode() {
 
       examHistory.value = data?.map((result: any) => ({
         id: result.exam_id,
-        topic: result.exam_id, // TODO: Join con tabla exams para obtener topic
+        topic: result.exams?.topic || 'Examen sin título',
         date: result.completed_at,
         score: result.percentage,
-        totalQuestions: result.details?.length || 0
+        totalQuestions: result.details?.length || 0,
+        resultDetails: result.details,
+        questions: result.exams?.questions || []
       })) || []
     } catch (err) {
       console.error('Error cargando historial:', err)
+    }
+  }
+
+  /**
+   * Obtener detalles completos de un examen
+   */
+  async function getExamDetails(examId: string): Promise<{
+    exam: Exam | null
+    result: ExamResult | null
+  }> {
+    if (!authStore.user) return { exam: null, result: null }
+
+    try {
+      // Obtener el examen
+      const { data: examData, error: examError } = await supabase
+        .from('exams')
+        .select('*')
+        .eq('id', examId)
+        .single()
+
+      if (examError) throw examError
+
+      // Obtener el resultado
+      const { data: resultData, error: resultError } = await supabase
+        .from('exam_results')
+        .select('*')
+        .eq('exam_id', examId)
+        .eq('user_id', authStore.user.id)
+        .single()
+
+      if (resultError) throw resultError
+
+      const exam: Exam = {
+        id: examData.id,
+        topic: examData.topic,
+        source: examData.source,
+        questions: examData.questions,
+        totalPoints: examData.total_points,
+        timeLimit: examData.time_limit,
+        createdAt: examData.created_at
+      }
+
+      const result: ExamResult = {
+        examId: resultData.exam_id,
+        score: resultData.score,
+        percentage: resultData.percentage,
+        answeredQuestions: resultData.details?.length || 0,
+        correctAnswers: resultData.correct_answers,
+        incorrectAnswers: resultData.incorrect_answers,
+        details: resultData.details,
+        completedAt: resultData.completed_at
+      }
+
+      return { exam, result }
+    } catch (err) {
+      console.error('Error obteniendo detalles del examen:', err)
+      return { exam: null, result: null }
     }
   }
 
@@ -752,6 +873,7 @@ export function useStudyMode() {
     generateExam,
     submitExam,
     loadExamHistory,
+    getExamDetails,
     fetchEducationalResources,
     startPomodoro,
     togglePomodoro,

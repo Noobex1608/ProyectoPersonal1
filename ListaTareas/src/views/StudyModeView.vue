@@ -262,8 +262,9 @@
           <ExamGenerator
             :exam="currentExam"
             :loading="loadingExam"
+            :preloaded-result="viewingExamResult"
             @submit-exam="handleExamSubmit"
-            @close-exam="clearCurrentExam"
+            @close-exam="handleCloseExam"
           />
 
           <!-- Historial de exámenes -->
@@ -461,6 +462,8 @@ const {
   analyzePDF,
   generateExam,
   submitExam,
+  getExamDetails,
+  loadExamHistory,
   startPomodoro,
   togglePomodoro,
   resetPomodoro,
@@ -474,6 +477,7 @@ const {
 
 // Estudio libre
 const freeTopic = ref('')
+const viewingExamResult = ref<any>(null)
 
 function selectTaskTopic(todo: TodoWithRelations) {
   freeTopic.value = `${todo.title}${todo.description ? ': ' + todo.description : ''}`
@@ -530,9 +534,29 @@ async function handleExamSubmit(answers: Record<number, string | string[]>) {
   }
 }
 
-function viewExamResults(exam: any) {
-  // TODO: Implementar vista de resultados detallados
-  console.log('View exam:', exam)
+async function viewExamResults(exam: any) {
+  // Cargar el examen completo con sus detalles
+  const { exam: fullExam, result } = await getExamDetails(exam.id)
+  
+  if (fullExam && result) {
+    // Establecer el examen y resultado para que ExamGenerator lo muestre
+    currentExam.value = fullExam
+    viewingExamResult.value = result
+    
+    // Hacer scroll al examen
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  } else {
+    alert('No se pudieron cargar los detalles del examen')
+  }
+}
+
+function handleCloseExam() {
+  console.log('handleCloseExam llamado')
+  clearCurrentExam()
+  viewingExamResult.value = null
+  // Recargar historial para mostrar el examen actualizado si se completó
+  loadExamHistory()
+  console.log('Examen cerrado y historial recargado')
 }
 
 // Utilidades
@@ -1604,6 +1628,12 @@ function getScoreLabel(score: number): string {
   font-weight: 700;
   color: #1f2937;
   margin-bottom: 1.5rem;
+}
+
+.title-icon {
+  width: 1.5rem;
+  height: 1.5rem;
+  flex-shrink: 0;
 }
 
 .history-grid {

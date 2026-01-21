@@ -113,7 +113,7 @@
 
       <!-- Acciones del examen -->
       <div class="exam-actions">
-        <button @click="handleClose" class="action-btn secondary">
+        <button @click.prevent="handleClose" class="action-btn secondary">
           <XMarkIcon class="btn-icon" />
           Cancelar
         </button>
@@ -156,7 +156,7 @@
           </div>
           <h2 class="score-label">{{ getScoreLabel(examResult.percentage) }}</h2>
           <p class="score-description">
-            {{ examResult.correctAnswers }} de {{ exam!.questions.length }} correctas
+            {{ examResult.correctAnswers }} de {{ examResult.details?.length || 0 }} correctas
           </p>
         </div>
       </div>
@@ -180,7 +180,7 @@
             </span>
           </div>
 
-          <p class="answer-question">{{ getQuestion(detail.questionId).question }}</p>
+          <p class="answer-question">{{ getQuestion(detail.questionId)?.question || 'Pregunta no disponible' }}</p>
 
           <div class="answer-details">
             <div class="detail-row">
@@ -197,16 +197,16 @@
             </div>
           </div>
 
-          <div class="explanation-box">
+          <div v-if="getQuestion(detail.questionId)?.explanation" class="explanation-box">
             <LightBulbIcon class="explanation-icon" />
-            <p class="explanation-text">{{ getQuestion(detail.questionId).explanation }}</p>
+            <p class="explanation-text">{{ getQuestion(detail.questionId)?.explanation }}</p>
           </div>
         </div>
       </div>
 
       <!-- Acciones de resultados -->
       <div class="results-actions">
-        <button @click="handleClose" class="action-btn primary">
+        <button @click.prevent="handleClose" class="action-btn primary" >
           <ArrowLeftIcon class="btn-icon" />
           Volver al modo estudio
         </button>
@@ -224,6 +224,27 @@
     <div v-if="loading && !exam" class="loading-state">
       <div class="spinner-large"></div>
       <p>Generando examen...</p>
+    </div>
+
+    <!-- Modal de confirmación para salir -->
+    <div v-if="showExitModal" class="modal-overlay" @click="showExitModal = false">
+      <div class="modal-content" @click.stop>
+        <div class="modal-header">
+          <h3 class="modal-title">¿Salir del examen?</h3>
+        </div>
+        <div class="modal-body">
+          <p>¿Estás seguro de que quieres salir?</p>
+          <p class="modal-warning">Se perderán todas las respuestas no enviadas.</p>
+        </div>
+        <div class="modal-actions">
+          <button @click="showExitModal = false" class="modal-btn secondary">
+            Cancelar
+          </button>
+          <button @click="confirmExit" class="modal-btn primary">
+            Sí, salir
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -246,10 +267,12 @@ import type { Exam, ExamQuestion, ExamResult } from '@/composables/useStudyMode'
 interface Props {
   exam: Exam | null
   loading?: boolean
+  preloadedResult?: ExamResult | null
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  loading: false
+  loading: false,
+  preloadedResult: null
 })
 
 // Emits
@@ -264,6 +287,8 @@ const showResults = ref(false)
 const examResult = ref<ExamResult | null>(null)
 const isTimerActive = ref(false)
 const timeRemaining = ref(0)
+const showExitModal = ref(false)
+const cachedExam = ref<Exam | null>(null) // Guardar examen para mostrar resultados
 let timerInterval: number | null = null
 
 // Labels
@@ -287,14 +312,54 @@ const canSubmit = computed(() => {
 })
 
 // Watchers
-watch(() => props.exam, (newExam) => {
-  if (newExam) {
+watch(() => props.exam, (newExam, oldExam) => {
+  // Si el examen se vuelve null, limpiar todo
+  if (!newExam && oldExam) {
+    console.log('Examen eliminado, limpiando estado')
     resetExam()
-    if (newExam.timeLimit) {
+    cachedExam.value = null
+    showExitModal.value = false
+    return
+  }
+  
+  if (newExam && newExam !== oldExam) {
+    // Guardar copia del examen solo si es diferente
+    cachedExam.value = JSON.parse(JSON.stringify(newExam))
+    
+    // Solo resetear si no estamos mostrando resultados precargados
+    if (!props.preloadedResult) {
+      resetExam()
+    }
+    
+    // Si hay un resultado precargado, mostrarlo directamente
+    if (props.preloadedResult) {
+      showResults.value = true
+      examResult.value = props.preloadedResult
+    } else if (newExam.timeLimit) {
       startTimer(newExam.timeLimit * 60) // Convertir minutos a segundos
     }
   }
-}, { immediate: true })
+})
+
+// Watcher para el resultado precargado
+watch(() => props.preloadedResult, (newResult, oldResult) => {
+  // Si el resultado se vuelve null, limpiar
+  if (!newResult && oldResult) {
+    console.log('Resultado precargado eliminado, limpiando')
+    resetExam()
+    cachedExam.value = null
+    return
+  }
+  
+  if (newResult && newResult !== oldResult) {
+    // Guardar copia del examen antes de mostrar resultados
+    if (props.exam) {
+      cachedExam.value = JSON.parse(JSON.stringify(props.exam))
+    }
+    showResults.value = true
+    examResult.value = newResult
+  }
+})
 
 // Funciones
 function resetExam() {
@@ -351,14 +416,44 @@ function submitExam() {
 }
 
 function handleClose() {
-  if (confirm('¿Estás seguro de que quieres salir? Se perderán todas las respuestas.')) {
+  console.log('handleClose llamado', {
+    showResults: showResults.value,
+    answersCount: Object.keys(answers.value).length,
+    showExitModal: showExitModal.value
+  })
+  
+  // Si hay resultados (examen completado o viendo histórico), cerrar directamente
+  if (showResults.value) {
+    console.log('Cerrando con resultados')
     stopTimer()
     emit('close-exam')
+    return
   }
+  
+  // Si hay respuestas en progreso, mostrar modal de confirmación
+  if (Object.keys(answers.value).length > 0) {
+    console.log('Mostrando modal de confirmación')
+    showExitModal.value = true
+    return
+  }
+  
+  // Si no hay respuestas, cerrar directamente
+  console.log('Cerrando sin respuestas')
+  stopTimer()
+  emit('close-exam')
 }
 
-function getQuestion(questionId: number): ExamQuestion {
-  return props.exam!.questions.find(q => q.id === questionId)!
+function confirmExit() {
+  showExitModal.value = false
+  stopTimer()
+  emit('close-exam')
+}
+
+function getQuestion(questionId: number): ExamQuestion | null {
+  // Usar el examen en caché si estamos mostrando resultados
+  const examToUse = cachedExam.value || props.exam
+  if (!examToUse || !examToUse.questions) return null
+  return examToUse.questions.find(q => q.id === questionId) || null
 }
 
 function formatAnswer(answer: string | string[]): string {
@@ -385,6 +480,10 @@ function getScoreLabel(percentage: number): string {
 // Cleanup
 onUnmounted(() => {
   stopTimer()
+  // Limpiar referencias para evitar memory leaks
+  answers.value = {}
+  examResult.value = null
+  cachedExam.value = null
 })
 </script>
 
@@ -1010,5 +1109,109 @@ onUnmounted(() => {
   .score-percent {
     font-size: 1.5rem;
   }
+}
+
+/* Modal */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.modal-content {
+  background: white;
+  border-radius: 1rem;
+  max-width: 450px;
+  width: 90%;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.modal-header {
+  padding: 1.5rem 1.5rem 1rem 1.5rem;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.modal-title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.modal-body {
+  padding: 1.5rem;
+}
+
+.modal-body p {
+  margin: 0 0 0.5rem 0;
+  color: #4b5563;
+  font-size: 1rem;
+}
+
+.modal-warning {
+  color: #dc2626 !important;
+  font-weight: 600;
+  font-size: 0.875rem !important;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 0.75rem;
+  padding: 1rem 1.5rem 1.5rem 1.5rem;
+  border-top: 1px solid #e5e7eb;
+}
+
+.modal-btn {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  border: none;
+  border-radius: 0.5rem;
+  font-weight: 600;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.modal-btn.secondary {
+  background: #f3f4f6;
+  color: #4b5563;
+}
+
+.modal-btn.secondary:hover {
+  background: #e5e7eb;
+}
+
+.modal-btn.primary {
+  background: #dc2626;
+  color: white;
+}
+
+.modal-btn.primary:hover {
+  background: #b91c1c;
 }
 </style>
