@@ -168,39 +168,107 @@ function processFile(file: File) {
 /**
  * Extrae texto del PDF usando PDF.js
  */
+/**
+ * Detecta si el texto extraído tiene caracteres corruptos
+ */
+function isTextCorrupted(text: string): boolean {
+  const sample = text.substring(0, 500)
+  // Contar caracteres raros o repetición de patrones corruptos
+  const strangeChars = (sample.match(/[^\x20-\x7E\u00A0-\u024F\u1E00-\u1EFF\n]/g) || []).length
+  const strangeRatio = strangeChars / sample.length
+  
+  // Si más del 20% son caracteres extraños, está corrupto
+  return strangeRatio > 0.2
+}
+
+/**
+ * Extrae texto de PDF - intenta múltiples estrategias
+ */
 async function extractTextFromPDF(file: File): Promise<string> {
   extracting.value = true
   extractionProgress.value = 0
 
   try {
-    // Nota: Necesitarás instalar pdf.js para esta funcionalidad
-    // npm install pdfjs-dist
+    console.log('Extrayendo texto del PDF...')
     
-    // Para simplificar, usaremos FormData y un endpoint que procese el PDF
-    // o directamente el FileReader para obtener el contenido
+    // Leer archivo como ArrayBuffer
+    const arrayBuffer = await file.arrayBuffer()
     
-    // Simulación de progreso (en producción, usar eventos de PDF.js)
-    const progressInterval = setInterval(() => {
-      if (extractionProgress.value < 90) {
-        extractionProgress.value += 10
+    extractionProgress.value = 30
+    
+    // ESTRATEGIA 1: Usar unpdf (rápido y simple)
+    try {
+      const { extractText } = await import('unpdf')
+      const result = await extractText(arrayBuffer, {
+        mergePages: false
+      })
+      
+      // unpdf puede devolver array de páginas o texto completo
+      const text = Array.isArray(result.text) ? result.text.join('\n\n') : result.text
+      
+      // Si el texto no está corrupto, usarlo
+      if (text && !isTextCorrupted(text)) {
+        extractionProgress.value = 100
+        console.log(`✅ Texto extraído con unpdf: ${text.length} caracteres`)
+        return text.trim()
+      } else {
+        console.warn('⚠️ Texto de unpdf está corrupto, intentando PDF.js...')
       }
-    }, 200)
-
-    // Aquí normalmente usarías PDF.js para extraer el texto
-    // Por ahora, simulamos la extracción
-    await new Promise(resolve => setTimeout(resolve, 2000))
+    } catch (unpdfError) {
+      console.warn('Error con unpdf:', unpdfError)
+    }
     
-    clearInterval(progressInterval)
+    // ESTRATEGIA 2: PDF.js con extracción página por página
+    extractionProgress.value = 50
+    console.log('Usando PDF.js como fallback...')
+    
+    const pdfjsLib = await import('pdfjs-dist')
+    const pdfjsWorker = await import('pdfjs-dist/build/pdf.worker.min.mjs?url')
+    pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker.default
+    
+    const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer })
+    const pdf = await loadingTask.promise
+    
+    let fullText = ''
+    
+    for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+      const page = await pdf.getPage(pageNum)
+      const textContent = await page.getTextContent()
+      
+      // Agrupar por líneas
+      const lines: Map<number, string[]> = new Map()
+      
+      for (const item of textContent.items) {
+        if ('str' in item && item.str.trim()) {
+          const y = Math.round(item.transform[5])
+          if (!lines.has(y)) lines.set(y, [])
+          lines.get(y)!.push(item.str.trim())
+        }
+      }
+      
+      // Ordenar y unir
+      const pageText = Array.from(lines.entries())
+        .sort((a, b) => b[0] - a[0])
+        .map(([_, texts]) => texts.join(' '))
+        .join('\n')
+      
+      fullText += `--- Diapositiva ${pageNum} ---\n${pageText}\n\n`
+      extractionProgress.value = 50 + Math.floor((pageNum / pdf.numPages) * 50)
+    }
+    
     extractionProgress.value = 100
-
-    // En producción, aquí iría el código real de extracción
-    // Por ahora retornamos un placeholder
-    return `Contenido del PDF: ${file.name}\n\nEste es un texto de ejemplo extraído del PDF.`
+    
+    if (!fullText.trim()) {
+      throw new Error('No se pudo extraer texto. El PDF podría ser una imagen escaneada sin OCR.')
+    }
+    
+    console.log(`✅ Texto extraído con PDF.js: ${fullText.length} caracteres`)
+    return fullText.trim()
     
   } catch (err) {
-    error.value = 'Error al extraer texto del PDF'
-    console.error('Error extrayendo PDF:', err)
-    return ''
+    error.value = err instanceof Error ? err.message : 'Error al extraer texto del PDF'
+    console.error('Error:', err)
+    throw err
   } finally {
     extracting.value = false
   }

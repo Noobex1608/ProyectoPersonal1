@@ -287,45 +287,154 @@ export async function analyzePDFWithOllama(
   chunks: string[],
   fileName: string
 ): Promise<any> {
-  const sampleChunks = chunks.slice(0, Math.min(5, chunks.length))
-  const sampleText = sampleChunks.join('\n\n')
+  const sampleChunks = chunks.slice(0, Math.min(8, chunks.length))
+  const sampleText = sampleChunks.join('\n\n').substring(0, 5000) // Más contexto
 
-  const systemPrompt = `Eres un asistente educativo que analiza documentos académicos.`
+  const systemPrompt = `Eres un asistente educativo experto en análisis de documentos. Debes extraer información clave del contenido.`
   
-  const prompt = `Analiza este documento educativo:
+  const prompt = `Analiza este documento y proporciona:
 
-ARCHIVO: ${fileName}
-TOTAL DE SECCIONES: ${chunks.length}
-
+DOCUMENTO: "${fileName}"
 CONTENIDO:
 ${sampleText}
 
-Proporciona un análisis en formato JSON:
-{
-  "fileName": "${fileName}",
-  "summary": "resumen del documento en 2-3 párrafos",
-  "mainTopics": ["tema 1", "tema 2", "tema 3"],
-  "keyConcepts": [
-    {"term": "concepto 1", "definition": "definición clara"},
-    {"term": "concepto 2", "definition": "definición clara"}
-  ],
-  "totalSections": ${chunks.length}
-}
+Responde en el siguiente formato:
 
-Identifica 3-6 temas principales y 5-8 conceptos clave.`
+RESUMEN:
+[Escribe un resumen de 3-4 oraciones sobre el tema principal del documento]
+
+TEMAS PRINCIPALES:
+1. [Primer tema principal]
+2. [Segundo tema principal]  
+3. [Tercer tema principal]
+
+CONCEPTOS CLAVE:
+- [Concepto 1]: [Breve explicación]
+- [Concepto 2]: [Breve explicación]
+- [Concepto 3]: [Breve explicación]
+
+Sé específico y usa información del contenido mostrado.`
 
   try {
     const response = await generateWithOllama(prompt, systemPrompt)
+    console.log('Respuesta de Ollama:', response.substring(0, 800))
     
-    const jsonMatch = response.match(/\{[\s\S]*\}/)
-    if (jsonMatch) {
-      return safeJsonParse(jsonMatch[0])
+    // Parsear la respuesta estructurada
+    const lines = response.split('\n').map(l => l.trim()).filter(l => l)
+    
+    let summary = ''
+    const mainTopics: string[] = []
+    const keyConcepts: Array<{term: string, definition: string}> = []
+    
+    let currentSection = ''
+    
+    for (const line of lines) {
+      if (line.includes('RESUMEN') || line.includes('Resumen')) {
+        currentSection = 'summary'
+        continue
+      } else if (line.includes('TEMAS') || line.includes('Temas')) {
+        currentSection = 'topics'
+        continue
+      } else if (line.includes('CONCEPTOS') || line.includes('Conceptos')) {
+        currentSection = 'concepts'
+        continue
+      }
+      
+      if (currentSection === 'summary' && line.length > 10) {
+        summary += line + ' '
+      } else if (currentSection === 'topics') {
+        // Extraer tema (remover numeración)
+        const topic = line.replace(/^\d+\.?\s*[-•]?\s*/, '').trim()
+        if (topic && mainTopics.length < 3) {
+          mainTopics.push(topic)
+        }
+      } else if (currentSection === 'concepts') {
+        // Extraer concepto y definición
+        const match = line.match(/^[-•]?\s*(.+?):\s*(.+)$/)
+        if (match && match[1] && match[2] && keyConcepts.length < 3) {
+          keyConcepts.push({
+            term: match[1].trim(),
+            definition: match[2].trim()
+          })
+        }
+      }
     }
     
-    throw new Error('No se pudo analizar el PDF correctamente')
+    // Validar y usar fallbacks si es necesario
+    if (!summary || summary.length < 20) {
+      const sentences = sampleText.match(/[^.!?]+[.!?]+/g) || []
+      summary = sentences.slice(0, 3).join(' ').trim()
+    }
+    
+    if (mainTopics.length === 0) {
+      // Fallback: palabras frecuentes
+      const words = sampleText.toLowerCase().split(/\s+/)
+      const wordCount = new Map<string, number>()
+      const stopWords = new Set(['el', 'la', 'los', 'las', 'de', 'del', 'y', 'en', 'a', 'que', 'un', 'una', 'por', 'para', 'con', 'es', 'se', 'su', 'al', 'como', 'más'])
+      
+      words.forEach(word => {
+        const cleaned = word.replace(/[^\w]/g, '')
+        if (cleaned.length > 5 && !stopWords.has(cleaned)) {
+          wordCount.set(cleaned, (wordCount.get(cleaned) || 0) + 1)
+        }
+      })
+      
+      const topWords = Array.from(wordCount.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([word]) => word.charAt(0).toUpperCase() + word.slice(1))
+      
+      mainTopics.push(...topWords)
+    }
+    
+    if (keyConcepts.length === 0) {
+      keyConcepts.push({ term: 'Contenido principal', definition: 'Información clave del documento' })
+    }
+    
+    return {
+      fileName,
+      summary: summary.trim(),
+      mainTopics,
+      keyConcepts,
+      totalSections: chunks.length
+    }
   } catch (error) {
     console.error('Error analizando PDF con Ollama:', error)
-    throw new Error('No se pudo analizar el contenido del PDF con Ollama')
+    
+    // Fallback: extraer información básica del texto directamente
+    const sentences = sampleText.match(/[^.!?]+[.!?]+/g) || []
+    const summaryText = sentences.slice(0, 2).join(' ').trim() || `Documento con ${chunks.length} secciones.`
+    
+    // Extraer palabras clave frecuentes
+    const words = sampleText.toLowerCase().split(/\s+/)
+    const wordCount = new Map<string, number>()
+    const stopWords = new Set([
+      'el', 'la', 'los', 'las', 'de', 'del', 'y', 'en', 'a', 'que', 'un', 'una', 
+      'por', 'para', 'con', 'es', 'se', 'su', 'al', 'como', 'más', 'este', 'esta'
+    ])
+    
+    words.forEach(word => {
+      const cleaned = word.replace(/[^\w]/g, '')
+      if (cleaned.length > 5 && !stopWords.has(cleaned)) {
+        wordCount.set(cleaned, (wordCount.get(cleaned) || 0) + 1)
+      }
+    })
+    
+    const topKeywords = Array.from(wordCount.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 6)
+      .map(([word]) => word.charAt(0).toUpperCase() + word.slice(1))
+    
+    return {
+      fileName,
+      summary: summaryText,
+      mainTopics: topKeywords.slice(0, 3),
+      keyConcepts: topKeywords.slice(3, 6).map(term => ({
+        term,
+        definition: `Concepto clave identificado en el documento`
+      })),
+      totalSections: chunks.length
+    }
   }
 }
 

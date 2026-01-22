@@ -193,13 +193,90 @@ export function useStudyMode() {
 
       // 2. Generar análisis preliminar (solo con muestra) usando Ollama
       const analysis = await analyzePDFWithOllama(chunks, file.name)
+      
+      // Limpiar asteriscos de los datos que vienen de Ollama
+      const cleanMainTopics = analysis.mainTopics?.map((topic: string) => 
+        topic.replace(/\*\*/g, '').trim()
+      ) || []
+      
+      const cleanKeyConcepts = analysis.keyConcepts?.map((concept: any) => ({
+        term: concept.term.replace(/\*\*/g, '').trim(),
+        definition: concept.definition.replace(/\*\*/g, '').trim()
+      })) || []
+      
+      // Crear una explicación más extensa combinando todos los elementos
+      let detailedExplanation = ''
+      
+      // Agregar resumen con más contexto del primer chunk
+      detailedExplanation += '**Resumen del contenido del documento**\n\n'
+      detailedExplanation += analysis.summary + '\n\n'
+      
+      // Agregar extracto del inicio del documento
+      if (chunks.length > 0 && chunks[0]) {
+        const firstChunk = chunks[0]
+        const sentences = firstChunk.match(/[^.!?]+[.!?]+/g) || []
+        if (sentences.length > 0) {
+          detailedExplanation += sentences.slice(0, 3).join(' ') + '\n\n'
+        }
+      }
+      
+      if (cleanMainTopics.length > 0) {
+        detailedExplanation += '## Temas Principales\n\n'
+        cleanMainTopics.forEach((topic: string, index: number) => {
+          detailedExplanation += `**Tema principal ${index + 1}**: ${topic}\n\n`
+          
+          // Buscar contexto relevante en múltiples chunks
+          const relatedChunks = chunks.filter(chunk => 
+            chunk.toLowerCase().includes(topic.toLowerCase())
+          ).slice(0, 2) // Tomar hasta 2 chunks relacionados
+          
+          if (relatedChunks.length > 0) {
+            relatedChunks.forEach((chunk) => {
+              // Extraer una oración relevante que mencione el tema
+              const sentences = chunk.match(/[^.!?]+[.!?]+/g) || []
+              const relevantSentence = sentences.find(s => 
+                s.toLowerCase().includes(topic.toLowerCase())
+              ) || sentences[0]
+              
+              if (relevantSentence) {
+                detailedExplanation += `${relevantSentence.trim()}\n\n`
+              }
+            })
+          } else {
+            // Si no encuentra el tema exacto, usar contenido general del documento
+            const chunkIndex = Math.min(index, chunks.length - 1)
+            const randomChunk = chunks[chunkIndex]
+            if (randomChunk) {
+              const sentences = randomChunk.match(/[^.!?]+[.!?]+/g) || []
+              if (sentences.length > 0 && sentences[0]) {
+                detailedExplanation += `${sentences[0].trim()}\n\n`
+              }
+            }
+          }
+        })
+      }
+      
+      if (cleanKeyConcepts.length > 0) {
+        detailedExplanation += '## Conceptos Clave\n\n'
+        cleanKeyConcepts.forEach((concept: any) => {
+          detailedExplanation += `**${concept.term}**: ${concept.definition}\n\n`
+        })
+      }
+      
+      detailedExplanation += `## Estructura del Documento\n\n`
+      detailedExplanation += `El documento "${file.name}" ha sido dividido en ${chunks.length} secciones para un análisis óptimo. `
+      detailedExplanation += `Puedes hacer preguntas específicas sobre cualquier parte del contenido y el sistema buscará la información más relevante para responderte.\n\n`
+      
       pdfAnalysis.value = {
         ...analysis,
-        explanation: analysis.summary // Usar summary como explanation inicial
+        mainTopics: cleanMainTopics,
+        keyConcepts: cleanKeyConcepts,
+        explanation: detailedExplanation
       }
 
-      // 3. Subir PDF a Supabase Storage
-      const fileName = `${Date.now()}_${file.name}`
+      // 3. Subir PDF a Supabase Storage (organizado por usuario)
+      const userId = authStore.user?.id || 'anonymous'
+      const fileName = `${userId}/${Date.now()}_${file.name}`
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('study-pdfs')
         .upload(fileName, file)
@@ -753,25 +830,24 @@ export function useStudyMode() {
     currentMindMapImage.value = null
     currentMindMap.value = null
     
-    // NIVEL 1: Intentar con Groq (genera código Mermaid)
     try {
-      console.log('🗺️ Nivel 1: Generando código Mermaid con Groq...')
-      const mermaidCode = await generateMindMapWithGroq(topic, 'medium')
-      console.log('✅ Código generado con Groq')
-      currentMindMap.value = mermaidCode
-      mindMapService.value = 'groq'
-      loadingMindMap.value = false
-      return
-    } catch (groqError) {
-      if (groqError instanceof GroqError && groqError.isRateLimitError) {
-        console.warn('⚠️ Límite de Groq alcanzado, usando Ollama local...')
-      } else {
-        console.warn('⚠️ Error con Groq, usando Ollama local...', groqError)
+      // NIVEL 1: Intentar con Groq (genera código Mermaid)
+      try {
+        console.log('🗺️ Nivel 1: Generando código Mermaid con Groq...')
+        const mermaidCode = await generateMindMapWithGroq(topic, 'medium')
+        console.log('✅ Código generado con Groq')
+        currentMindMap.value = mermaidCode
+        mindMapService.value = 'groq'
+        return
+      } catch (groqError) {
+        if (groqError instanceof GroqError && groqError.isRateLimitError) {
+          console.warn('⚠️ Límite de Groq alcanzado, usando Ollama local...')
+        } else {
+          console.warn('⚠️ Error con Groq, usando Ollama local...', groqError)
+        }
       }
-    }
-    
-    // NIVEL 2: Respaldo con Python/Ollama (local, sin límites)
-    try {
+      
+      // NIVEL 2: Respaldo con Python/Ollama (local, sin límites)
       console.log('🐳 Nivel 2: Generando con Ollama local (Python)...')
       const mermaidCode = await generateMindMap({
         topic: topic,
@@ -780,11 +856,12 @@ export function useStudyMode() {
       console.log('✅ Código generado con Ollama (respaldo local)')
       currentMindMap.value = mermaidCode
       mindMapService.value = 'ollama'
-    } catch (pythonError) {
-      errorMindMap.value = pythonError instanceof Error 
-        ? pythonError.message 
+    } catch (error) {
+      errorMindMap.value = error instanceof Error 
+        ? error.message 
         : 'Error: Todos los servicios fallaron'
-      console.error('❌ Error con los 2 niveles:', pythonError)
+      console.error('❌ Error con todos los servicios:', error)
+    } finally {
       loadingMindMap.value = false
     }
   }
@@ -831,6 +908,8 @@ export function useStudyMode() {
           : 'Error al generar mapa mental'
         console.error('❌ Error con ambos servicios:', pythonError)
       }
+    } finally {
+      loadingMindMap.value = false
     }
   }
 

@@ -578,6 +578,17 @@ function formatContent(content: string): string {
     const cleanPara = para.trim()
     if (!cleanPara) continue
     
+    // Detectar encabezados markdown
+    if (/^#{1,6}\s/.test(cleanPara)) {
+      const match = cleanPara.match(/^(#{1,6})\s+(.+)$/)
+      if (match && match[1] && match[2]) {
+        const level = match[1].length
+        const title = match[2]
+        formatted += `<h${level} class="markdown-heading">${title}</h${level}>`
+        continue
+      }
+    }
+    
     // Detectar listas con viñetas, guiones o números
     if (/^[-•*]\s/.test(cleanPara) || /^\d+[.)\s]/.test(cleanPara)) {
       const lines = cleanPara.split(/\n/)
@@ -585,7 +596,11 @@ function formatContent(content: string): string {
       for (const line of lines) {
         const cleanLine = line.replace(/^[-•*]\s+/, '').replace(/^\d+[.)\s]+/, '').trim()
         if (cleanLine) {
-          formatted += `<li>${cleanLine}</li>`
+          // Aplicar formato inline en los items de lista
+          const formattedLine = cleanLine
+            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+            .replace(/\*(.*?)\*/g, '<em>$1</em>')
+          formatted += `<li>${formattedLine}</li>`
         }
       }
       formatted += '</ul>'
@@ -1234,6 +1249,30 @@ function getScoreLabel(score: number): string {
   line-height: 1.6;
 }
 
+.explanation-content :deep(.markdown-heading) {
+  color: #1f2937;
+  font-weight: 600;
+  margin-top: 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.explanation-content :deep(h2.markdown-heading) {
+  font-size: 1.5rem;
+  color: #F06543;
+  border-bottom: 2px solid #F06543;
+  padding-bottom: 0.5rem;
+}
+
+.explanation-content :deep(h3.markdown-heading) {
+  font-size: 1.25rem;
+  color: #E9724D;
+}
+
+.explanation-content :deep(h4.markdown-heading) {
+  font-size: 1.1rem;
+  color: #4b5563;
+}
+
 .explanation-content :deep(br) {
   content: "";
   display: block;
@@ -1558,6 +1597,30 @@ function getScoreLabel(score: number): string {
 .explanation-text :deep(li) {
   margin-bottom: 0.5rem;
   line-height: 1.6;
+}
+
+.explanation-text :deep(.markdown-heading) {
+  color: #1f2937;
+  font-weight: 600;
+  margin-top: 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.explanation-text :deep(h2.markdown-heading) {
+  font-size: 1.5rem;
+  color: #F06543;
+  border-bottom: 2px solid #F06543;
+  padding-bottom: 0.5rem;
+}
+
+.explanation-text :deep(h3.markdown-heading) {
+  font-size: 1.25rem;
+  color: #E9724D;
+}
+
+.explanation-text :deep(h4.markdown-heading) {
+  font-size: 1.1rem;
+  color: #4b5563;
 }
 
 .explanation-text :deep(br) {

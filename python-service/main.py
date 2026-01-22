@@ -1,8 +1,11 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import os
 import requests
+import pdfplumber
+import io
+from typing import Optional
 
 app = FastAPI()
 
@@ -211,3 +214,42 @@ async def health_check():
             "ollama_connected": False,
             "error": str(e)
         }
+
+@app.post("/extract-pdf-text")
+async def extract_pdf_text(file: UploadFile = File(...)):
+    """
+    Extrae texto de un PDF usando pdfplumber (mucho más robusto que PDF.js)
+    """
+    try:
+        # Leer el contenido del archivo
+        contents = await file.read()
+        
+        # Usar pdfplumber para extraer texto
+        with pdfplumber.open(io.BytesIO(contents)) as pdf:
+            full_text = ""
+            
+            for page_num, page in enumerate(pdf.pages, start=1):
+                # Extraer texto de la página
+                page_text = page.extract_text()
+                
+                if page_text:
+                    full_text += page_text + "\n\n"
+            
+            if not full_text.strip():
+                raise HTTPException(
+                    status_code=400, 
+                    detail="No se pudo extraer texto del PDF. Podría ser un PDF escaneado sin OCR."
+                )
+            
+            return {
+                "success": True,
+                "text": full_text.strip(),
+                "num_pages": len(pdf.pages),
+                "char_count": len(full_text)
+            }
+            
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al procesar el PDF: {str(e)}"
+        )
